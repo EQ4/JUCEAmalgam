@@ -1,7 +1,6 @@
 # Juce Amalgamation
 
 A distribution of the [JUCE][1] library in amalgamated source code form.
-form.
 
 ## What is JUCE?
 
