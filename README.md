@@ -51,10 +51,10 @@ are easy to add to your existing project as source files (rather than linking
 as a library). They are also easier to redistribute if you are making an open
 source application and don't want to have any external dependencies.
 
-The amalgamation is built using the [Amalgamate][3] Tool.
+The amalgamation is built using the [JUCE Amalgamation Template][3] and the
+[Amalgamate][4] tool.
 
 [1]: http://rawmaterialsoftware.com/juce.php "The JUCE Library"
-
 [2]: http://rawmaterialsoftware.com/jucelicense.php "JUCE Commercial Licensing"
-
-[3]: http://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
+[3]: http://github.com/vinniefalco/JUCEAmalgamTemplate/ "JUCE Amalgamation Template"
+[4]: http://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
