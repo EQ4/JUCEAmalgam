@@ -30,9 +30,7 @@
 
 #include "juce_events_amalgam.h"
 #include "juce_audio_basics_amalgam.h"
-//#if JUCE_USE_CDREADER
 #include "juce_audio_formats_amalgam.h"
-//#endif
 
 /** Config: JUCE_ASIO
 	Enables ASIO audio devices (MS Windows only).

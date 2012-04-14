@@ -1,3 +1,4 @@
+84a0a24b4ec97188641f044294afd1322042a520 2012-04-14 Added some speaker arrangements for WavAudioFormat. Removed a conditional in audio_devices.h
 ebfd2835d84683ac10184e8382f031fd8fc21de3 2012-04-13 OpenGLContext fix.
 3b431954ecef57e570105b46103c07ec4b2a6220 2012-04-13 Added an extra include that seems to be needed for some iOS build targets.
 5947b8d3ec69babbc0c18baa103508b0b103452b 2012-04-13 Updated the windows dll project.
