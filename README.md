@@ -56,5 +56,5 @@ The amalgamation is built using the [JUCE Amalgamation Template][3] and the
 
 [1]: http://rawmaterialsoftware.com/juce.php "The JUCE Library"
 [2]: http://rawmaterialsoftware.com/jucelicense.php "JUCE Commercial Licensing"
-[3]: http://github.com/vinniefalco/JUCEAmalgamTemplate/ "JUCE Amalgamation Template"
-[4]: http://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
+[3]: https://github.com/vinniefalco/JUCEAmalgamTemplate/ "JUCE Amalgamation Template"
+[4]: https://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
