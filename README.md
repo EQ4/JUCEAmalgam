@@ -1,4 +1,4 @@
-# Juce Amalgamation
+# JUCE Amalgamation
 
 A distribution of the [JUCE][1] library in amalgamated source code form.
 
