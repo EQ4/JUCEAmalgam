@@ -2,6 +2,14 @@
 
 A distribution of the [JUCE][1] library in amalgamated source code form.
 
+## What's an amalgamation?
+
+An amalgamation is simply a collection of header and source files that have been
+concatenated together to form one or more very large files. In this form, they
+are easy to add to your existing project as source files (rather than linking
+as a library). They are also easier to redistribute if you are making an open
+source application and don't want to have any external dependencies.
+
 ## What is JUCE?
 
 JUCE (Jules' Utility Class Extensions) is an all-encompassing C++ class library
@@ -28,7 +36,7 @@ For all the platforms above, the code that you write is the same, and you don't
 need to worry about any platform-specific details. If your C++ is portable, then
 you should be able to simply re-compile your app to run it on other OSes.
 
-## How do I use it?
+## How do I use this?
 
 JUCE is broken up into modules, with each module coming with its own pair of
 amalgamated source and header files. Add the desired amalgamated module sources
@@ -38,16 +46,8 @@ in your source code. You will need to create a file called "AppConfig.h" and
 configure your include paths so that it is visible to the JUCE amalgamated
 sources.
 
-## What's an amalgamation?
-
-An amalgamation is simply a collection of header and source files that have been
-concatenated together to form one or more very large files. In this form, they
-are easy to add to your existing project as source files (rather than linking
-as a library). They are also easier to redistribute if you are making an open
-source application and don't want to have any external dependencies.
-
-The amalgamation is built using the [JUCE Amalgamation Template][3] and the
-[Amalgamate][4] tool.
+For the rare case where you want to re-create the amalgamation yourself,
+you can build it using the [JUCE Amalgamation Template][3].
 
 ## License
 
