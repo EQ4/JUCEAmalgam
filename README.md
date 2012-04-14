@@ -28,11 +28,6 @@ For all the platforms above, the code that you write is the same, and you don't
 need to worry about any platform-specific details. If your C++ is portable, then
 you should be able to simply re-compile your app to run it on other OSes.
 
-JUCE is released under the GNU Public Licence, which means it can be freely
-copied and distributed, and costs nothing to use in open-source applications. If
-you'd like to release a closed-source application that uses JUCE, [paid
-commercial licences][2] are available.
-
 ## How do I use it?
 
 JUCE is broken up into modules, with each module coming with its own pair of
@@ -54,7 +49,16 @@ source application and don't want to have any external dependencies.
 The amalgamation is built using the [JUCE Amalgamation Template][3] and the
 [Amalgamate][4] tool.
 
+## License
+
+Copyright 2004-11 by Raw Material Software Ltd. <br>
+JUCE is released under the [GNU Public Licence][5], which means it can be freely
+copied and distributed, and costs nothing to use in open-source applications. If
+you'd like to release a closed-source application that uses JUCE, [paid
+commercial licences][2] are available.
+
 [1]: http://rawmaterialsoftware.com/juce.php "The JUCE Library"
 [2]: http://rawmaterialsoftware.com/jucelicense.php "JUCE Commercial Licensing"
 [3]: https://github.com/vinniefalco/JUCEAmalgamTemplate/ "JUCE Amalgamation Template"
 [4]: https://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
+[5]: http://www.gnu.org/licenses/gpl-2.0.html "GNU GPL Version 2"
