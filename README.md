@@ -51,8 +51,8 @@ The amalgamation is built using the [JUCE Amalgamation Template][3] and the
 
 ## License
 
-Copyright 2004-11 by Raw Material Software Ltd. <br>
-JUCE is released under the [GNU Public Licence][5], which means it can be freely
+Copyright 2004-11 by [Raw Material Software Ltd.][5] <br>
+JUCE is released under the [GNU Public Licence][6], which means it can be freely
 copied and distributed, and costs nothing to use in open-source applications. If
 you'd like to release a closed-source application that uses JUCE, [paid
 commercial licences][2] are available.
@@ -61,4 +61,5 @@ commercial licences][2] are available.
 [2]: http://rawmaterialsoftware.com/jucelicense.php "JUCE Commercial Licensing"
 [3]: https://github.com/vinniefalco/JUCEAmalgamTemplate/ "JUCE Amalgamation Template"
 [4]: https://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
-[5]: http://www.gnu.org/licenses/gpl-2.0.html "GNU GPL Version 2"
+[5]: http://rawmaterialsoftware.com "Raw Material Software, Ltd."
+[6]: http://www.gnu.org/licenses/gpl-2.0.html "GNU GPL Version 2"
