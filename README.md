@@ -46,7 +46,7 @@ in your source code. You will need to create a file called "AppConfig.h" and
 configure your include paths so that it is visible to the JUCE amalgamated
 sources.
 
-[JUCEAmalgam][7] was built using the [JUCE Amalgamation Template][3].
+The [JUCE Amalgmation][7] was built using the [JUCE Amalgamation Template][3].
 
 ## License
 
