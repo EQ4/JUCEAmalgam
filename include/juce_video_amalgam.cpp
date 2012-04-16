@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_video.cpp ***/
 #if defined (__JUCE_VIDEO_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -3673,4 +3674,6 @@ CameraDevice* CameraDevice::openDevice (int index,
 
 /*** End of inlined file: juce_video.cpp ***/
 
+
+#endif
 

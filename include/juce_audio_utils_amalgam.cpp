@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_audio_utils.cpp ***/
 #if defined (__JUCE_AUDIO_UTILS_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -3454,4 +3455,6 @@ void AudioProcessorPlayer::handleIncomingMidiMessage (MidiInput*, const MidiMess
 
 /*** End of inlined file: juce_audio_utils.cpp ***/
 
+
+#endif
 

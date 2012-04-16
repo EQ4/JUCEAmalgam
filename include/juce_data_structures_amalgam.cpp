@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_data_structures.cpp ***/
 #if defined (__JUCE_DATA_STRUCTURES_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -1977,4 +1978,6 @@ void PropertiesFile::propertyChanged()
 
 /*** End of inlined file: juce_data_structures.cpp ***/
 
+
+#endif
 

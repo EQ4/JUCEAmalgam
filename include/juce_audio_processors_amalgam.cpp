@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_audio_processors.cpp ***/
 #if defined (__JUCE_AUDIO_PROCESSORS_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -8031,4 +8032,6 @@ void PluginListComponent::scanFor (AudioPluginFormat* format)
 
 /*** End of inlined file: juce_audio_processors.cpp ***/
 
+
+#endif
 

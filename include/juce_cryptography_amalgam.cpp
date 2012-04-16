@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_cryptography.cpp ***/
 #if defined (__JUCE_CRYPTOGRAPHY_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -1152,4 +1153,6 @@ static SHA256Tests sha256UnitTests;
 
 /*** End of inlined file: juce_cryptography.cpp ***/
 
+
+#endif
 

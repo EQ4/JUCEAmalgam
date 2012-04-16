@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_audio_devices.cpp ***/
 #if defined (__JUCE_AUDIO_DEVICES_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -15944,4 +15945,6 @@ AudioIODeviceType* AudioIODeviceType::createAudioIODeviceType_OpenSLES()
 
 /*** End of inlined file: juce_audio_devices.cpp ***/
 
+
+#endif
 

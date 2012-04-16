@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_gui_extra.cpp ***/
 #if defined (__JUCE_GUI_EXTRA_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -7707,4 +7708,6 @@ void WebBrowserComponent::pageFinishedLoading (const String&) {}
 
 /*** End of inlined file: juce_gui_extra.cpp ***/
 
+
+#endif
 

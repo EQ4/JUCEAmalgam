@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_graphics.cpp ***/
 #if defined (__JUCE_GRAPHICS_MODULE_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -69368,4 +69369,6 @@ bool TextLayout::createNativeLayout (const AttributedString&)
 
 /*** End of inlined file: juce_graphics.cpp ***/
 
+
+#endif
 

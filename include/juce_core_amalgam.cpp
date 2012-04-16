@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_core.cpp ***/
 #if defined (__JUCE_CORE_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -33049,4 +33050,6 @@ void Process::lowerPrivilege() {}
 
 /*** End of inlined file: juce_core.cpp ***/
 
+
+#endif
 

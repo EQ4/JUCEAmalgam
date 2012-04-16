@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_opengl.cpp ***/
 #if defined (__JUCE_OPENGL_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -6385,4 +6386,6 @@ void OpenGLContext::copyTexture (const Rectangle<int>& targetClipArea,
 
 /*** End of inlined file: juce_opengl.cpp ***/
 
+
+#endif
 

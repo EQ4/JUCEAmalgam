@@ -24,6 +24,7 @@
 */
 
 #define JUCE_AMALGAMATED_INCLUDE 1
+#if !defined(__APPLE__) || defined(__OBJC__)
 
 /*** Start of inlined file: juce_audio_formats.cpp ***/
 #if defined (__JUCE_AUDIO_FORMATS_JUCEHEADER__) && ! JUCE_AMALGAMATED_INCLUDE
@@ -93751,4 +93752,6 @@ AudioFormatWriter* WindowsMediaAudioFormat::createWriterFor (OutputStream* /*str
 
 /*** End of inlined file: juce_audio_formats.cpp ***/
 
+
+#endif
 
