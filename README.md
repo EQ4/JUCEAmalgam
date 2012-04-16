@@ -46,8 +46,7 @@ in your source code. You will need to create a file called "AppConfig.h" and
 configure your include paths so that it is visible to the JUCE amalgamated
 sources.
 
-For the rare case where you want to re-create the amalgamation yourself,
-you can build it using the [JUCE Amalgamation Template][3].
+[JUCEAmalgam][7] was built using the [JUCE Amalgamation Template][3].
 
 ## License
 
@@ -63,3 +62,4 @@ commercial licences][2] are available.
 [4]: https://github.com/vinniefalco/Amalgamate/ "Amalgamate Tool"
 [5]: http://rawmaterialsoftware.com "Raw Material Software, Ltd."
 [6]: http://www.gnu.org/licenses/gpl-2.0.html "GNU GPL Version 2"
+[7]: https://github.com/vinniefalco/JUCEAmalgam "JUCE Amalgamation"
