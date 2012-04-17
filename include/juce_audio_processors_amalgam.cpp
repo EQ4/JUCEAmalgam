@@ -2620,6 +2620,14 @@ public:
 
 			embeddedView = attachView (wrapperWindow, HIViewGetRoot (wrapperWindow));
 
+			// Check for the plugin creating its own floating window, and if there is one,
+			// we need to reparent it to make it visible..
+			NSWindow* floatingChildWindow = [[carbonWindow childWindows] objectAtIndex: 0];
+
+			if (floatingChildWindow != nil)
+				[getOwnerWindow() addChildWindow: floatingChildWindow
+										 ordered: NSWindowAbove];
+
 			EventTypeSpec windowEventTypes[] =
 			{
 				{ kEventClassWindow, kEventWindowGetClickActivation },
@@ -5481,7 +5489,7 @@ void VSTPluginInstance::updateStoredProgramNames()
 {
 	if (effect != nullptr && getNumPrograms() > 0)
 	{
-		char nm [256] = { 0 };
+		char nm[256] = { 0 };
 
 		// only do this if the plugin can't use indexed names..
 		if (dispatch (effGetProgramNameIndexed, 0, -1, nm, 0) == 0)
@@ -5504,24 +5512,28 @@ void VSTPluginInstance::updateStoredProgramNames()
 
 const String VSTPluginInstance::getCurrentProgramName()
 {
+	String name;
+
 	if (effect != nullptr)
 	{
-		char nm [256] = { 0 };
-		dispatch (effGetProgramName, 0, 0, nm, 0);
+		{
+			char nm[256] = { 0 };
+			dispatch (effGetProgramName, 0, 0, nm, 0);
+			name = String (CharPointer_UTF8 (nm)).trim();
+		}
 
 		const int index = getCurrentProgram();
+
 		if (programNames[index].isEmpty())
 		{
 			while (programNames.size() < index)
 				programNames.add (String::empty);
 
-			programNames.set (index, String (nm).trim());
+			programNames.set (index, name);
 		}
-
-		return String (nm).trim();
 	}
 
-	return String::empty;
+	return name;
 }
 
 const String VSTPluginInstance::getInputChannelName (int index) const

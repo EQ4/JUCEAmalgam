@@ -1,3 +1,12 @@
+eb028b7c33b453934061e8aa8ffede8f28f321a0 2012-04-17 Introjucer: added support for a user-code section to the AppConfig.h file.
+d4e99f6628141babd973a5db7bb3b04edb6655a1 2012-04-17 Tweak to the demo project.
+cf5163a68dfb37c7e1b10c45bfd42de70f9f704a 2012-04-16 Updated some win32 video code.
+df5d50bcd8cfe3c36ed3646ddd34c54ae3287122 2012-04-16 Version number bump.
+d7df53bf2e7a2ff0b710c46fae8e6ee4d3613999 2012-04-16 Oops! Fixed a typo in the last check-in.
+abf8f59df4add751a162eac3836e4164d199f6ac 2012-04-16 Fix for OSX VST host windowing order problem.
+cebf34d9bbbe23af7ef04304071ebdc7ad4c1271 2012-04-16 Introjucer: improved handling of windows filenames when run on *nix.
+3f953ca21db7ccde2a6ebf12159d0e68174a1116 2012-04-16 Change to assertions to get Xcode 4 to work better.
+9fe7c939e00f832891b138ee7165e33f3842938c 2012-04-15 VST string encoding tweak.
 84a0a24b4ec97188641f044294afd1322042a520 2012-04-14 Added some speaker arrangements for WavAudioFormat. Removed a conditional in audio_devices.h
 ebfd2835d84683ac10184e8382f031fd8fc21de3 2012-04-13 OpenGLContext fix.
 3b431954ecef57e570105b46103c07ec4b2a6220 2012-04-13 Added an extra include that seems to be needed for some iOS build targets.
