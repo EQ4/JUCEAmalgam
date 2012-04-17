@@ -23,4 +23,6 @@
   ==============================================================================
 */
 
+#if defined(__APPLE__) && defined(__OBJC__)
 #include "juce_opengl_amalgam.cpp"
+#endif

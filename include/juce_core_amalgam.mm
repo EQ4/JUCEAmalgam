@@ -23,4 +23,6 @@
   ==============================================================================
 */
 
+#if defined(__APPLE__) && defined(__OBJC__)
 #include "juce_core_amalgam.cpp"
+#endif
