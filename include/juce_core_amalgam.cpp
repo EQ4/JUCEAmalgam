@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -12808,6 +12809,11 @@ void Thread::stopThread (const int timeOutMilliseconds)
 
 bool Thread::setPriority (const int newPriority)
 {
+	// NB: deadlock possible if you try to set the thread prio from the thread itself,
+	// so using setCurrentThreadPriority instead in that case.
+	if (getCurrentThreadId() == getThreadId())
+		return setCurrentThreadPriority (newPriority);
+
 	const ScopedLock sl (startStopLock);
 
 	if (setThreadPriority (threadHandle, newPriority))
@@ -28505,7 +28511,7 @@ void Logger::outputDebugString (const String& text)
 
 namespace SystemStatsHelpers
 {
-   #if JUCE_INTEL
+   #if JUCE_INTEL && ! JUCE_NO_INLINE_ASM
 	static void doCPUID (uint32& a, uint32& b, uint32& c, uint32& d, uint32 type)
 	{
 		uint32 la = a, lb = b, lc = c, ld = d;
@@ -28526,7 +28532,7 @@ namespace SystemStatsHelpers
 
 SystemStats::CPUFlags::CPUFlags()
 {
-   #if JUCE_INTEL
+   #if JUCE_INTEL && ! JUCE_NO_INLINE_ASM
 	uint32 familyModel = 0, extFeatures = 0, features = 0, dummy = 0;
 	SystemStatsHelpers::doCPUID (familyModel, extFeatures, dummy, features, 1);
 
@@ -28616,7 +28622,7 @@ int SystemStats::getMemorySizeInMegabytes()
 
 String SystemStats::getCpuVendor()
 {
-   #if JUCE_INTEL
+   #if JUCE_INTEL && ! JUCE_NO_INLINE_ASM
 	uint32 dummy = 0;
 	uint32 vendor[4] = { 0 };
 

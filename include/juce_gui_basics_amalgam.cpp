@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -446,6 +447,7 @@
  #include <X11/Xutil.h>
  #include <X11/Xmd.h>
  #include <X11/keysym.h>
+ #include <X11/XKBlib.h>
  #include <X11/cursorfont.h>
  #include <unistd.h>
 
@@ -819,7 +821,7 @@ struct Component::ComponentHelpers
 	static Rectangle<int> getParentOrMainMonitorBounds (const Component& comp)
 	{
 		return comp.getParentComponent() != nullptr ? comp.getParentComponent()->getLocalBounds()
-													: Desktop::getInstance().getMainMonitorArea();
+													: Desktop::getInstance().getDisplays().getMainDisplay().userArea;
 	}
 };
 
@@ -1430,7 +1432,7 @@ Rectangle<int> Component::getScreenBounds() const     { return localAreaToGlobal
 
 Rectangle<int> Component::getParentMonitorArea() const
 {
-	return Desktop::getInstance().getMonitorAreaContaining (getScreenBounds().getCentre());
+	return Desktop::getInstance().getDisplays().getDisplayContaining (getScreenBounds().getCentre()).userArea;
 }
 
 Point<int> Component::getLocalPoint (const Component* source, const Point<int>& point) const
@@ -2728,6 +2730,9 @@ void Component::internalMouseEnter (MouseInputSource& source, const Point<int>& 
 
 void Component::internalMouseExit (MouseInputSource& source, const Point<int>& relativePos, const Time& time)
 {
+	if (isCurrentlyBlockedByAnotherModalComponent() && source.getComponentUnderMouse() != this)
+		return;
+
 	if (flags.repaintOnMouseActivityFlag)
 		repaint();
 
@@ -3371,7 +3376,6 @@ Desktop::Desktop()
 	  allowedOrientations (allOrientations)
 {
 	createMouseInputSources();
-	refreshMonitorSizes();
 }
 
 Desktop::~Desktop()
@@ -3395,78 +3399,6 @@ Desktop& JUCE_CALLTYPE Desktop::getInstance()
 }
 
 Desktop* Desktop::instance = nullptr;
-
-void Desktop::refreshMonitorSizes()
-{
-	Array <Rectangle<int> > oldClipped, oldUnclipped;
-	oldClipped.swapWithArray (monitorCoordsClipped);
-	oldUnclipped.swapWithArray (monitorCoordsUnclipped);
-
-	getCurrentMonitorPositions (monitorCoordsClipped, true);
-	getCurrentMonitorPositions (monitorCoordsUnclipped, false);
-	jassert (monitorCoordsClipped.size() == monitorCoordsUnclipped.size());
-
-	if (oldClipped != monitorCoordsClipped
-		 || oldUnclipped != monitorCoordsUnclipped)
-	{
-		for (int i = ComponentPeer::getNumPeers(); --i >= 0;)
-		{
-			ComponentPeer* const p = ComponentPeer::getPeer (i);
-			if (p != nullptr)
-				p->handleScreenSizeChange();
-		}
-	}
-}
-
-int Desktop::getNumDisplayMonitors() const noexcept
-{
-	return monitorCoordsClipped.size();
-}
-
-Rectangle<int> Desktop::getDisplayMonitorCoordinates (const int index, const bool clippedToWorkArea) const noexcept
-{
-	return clippedToWorkArea ? monitorCoordsClipped [index]
-							 : monitorCoordsUnclipped [index];
-}
-
-RectangleList Desktop::getAllMonitorDisplayAreas (const bool clippedToWorkArea) const
-{
-	RectangleList rl;
-
-	for (int i = 0; i < getNumDisplayMonitors(); ++i)
-		rl.addWithoutMerging (getDisplayMonitorCoordinates (i, clippedToWorkArea));
-
-	return rl;
-}
-
-Rectangle<int> Desktop::getMainMonitorArea (const bool clippedToWorkArea) const noexcept
-{
-	return getDisplayMonitorCoordinates (0, clippedToWorkArea);
-}
-
-Rectangle<int> Desktop::getMonitorAreaContaining (const Point<int>& position, const bool clippedToWorkArea) const
-{
-	Rectangle<int> best (getMainMonitorArea (clippedToWorkArea));
-	double bestDistance = 1.0e10;
-
-	for (int i = getNumDisplayMonitors(); --i >= 0;)
-	{
-		const Rectangle<int> rect (getDisplayMonitorCoordinates (i, clippedToWorkArea));
-
-		if (rect.contains (position))
-			return rect;
-
-		const double distance = rect.getCentre().getDistanceFrom (position);
-
-		if (distance < bestDistance)
-		{
-			bestDistance = distance;
-			best = rect;
-		}
-	}
-
-	return best;
-}
 
 int Desktop::getNumComponents() const noexcept
 {
@@ -3730,6 +3662,92 @@ void Desktop::sendMouseMove()
 				mouseListeners.callChecked (checker, &MouseListener::mouseDrag, me);
 			else
 				mouseListeners.callChecked (checker, &MouseListener::mouseMove, me);
+		}
+	}
+}
+
+Desktop::Displays::Displays()   { refresh(); }
+Desktop::Displays::~Displays()  {}
+
+const Desktop::Displays::Display& Desktop::Displays::getMainDisplay() const noexcept
+{
+	jassert (displays.getReference(0).isMain);
+	return displays.getReference(0);
+}
+
+const Desktop::Displays::Display& Desktop::Displays::getDisplayContaining (const Point<int>& position) const noexcept
+{
+	const Display* best = &displays.getReference(0);
+	double bestDistance = 1.0e10;
+
+	for (int i = displays.size(); --i >= 0;)
+	{
+		const Display& d = displays.getReference(i);
+
+		if (d.totalArea.contains (position))
+		{
+			best = &d;
+			break;
+		}
+
+		const double distance = d.totalArea.getCentre().getDistanceFrom (position);
+
+		if (distance < bestDistance)
+		{
+			bestDistance = distance;
+			best = &d;
+		}
+	}
+
+	return *best;
+}
+
+RectangleList Desktop::Displays::getRectangleList (bool userAreasOnly) const
+{
+	RectangleList rl;
+
+	for (int i = 0; i < displays.size(); ++i)
+	{
+		const Display& d = displays.getReference(i);
+		rl.addWithoutMerging (userAreasOnly ? d.userArea : d.totalArea);
+	}
+
+	return rl;
+}
+
+Rectangle<int> Desktop::Displays::getTotalBounds (bool userAreasOnly) const
+{
+	return getRectangleList (userAreasOnly).getBounds();
+}
+
+bool operator== (const Desktop::Displays::Display& d1, const Desktop::Displays::Display& d2) noexcept
+{
+	return d1.userArea == d2.userArea
+		&& d1.totalArea == d2.totalArea
+		&& d1.scale == d2.scale
+		&& d1.isMain == d2.isMain;
+}
+
+bool operator!= (const Desktop::Displays::Display& d1, const Desktop::Displays::Display& d2) noexcept
+{
+	return ! (d1 == d2);
+}
+
+void Desktop::Displays::refresh()
+{
+	Array<Display> oldDisplays;
+	oldDisplays.swapWithArray (displays);
+
+	findDisplays();
+	jassert (displays.size() > 0);
+
+	if (oldDisplays != displays)
+	{
+		for (int i = ComponentPeer::getNumPeers(); --i >= 0;)
+		{
+			ComponentPeer* const p = ComponentPeer::getPeer (i);
+			if (p != nullptr)
+				p->handleScreenSizeChange();
 		}
 	}
 }
@@ -13616,7 +13634,7 @@ void ComponentBoundsConstrainer::setBoundsForComponent (Component* const compone
 		if (peer != nullptr)
 			border = peer->getFrameSize();
 
-		limits = Desktop::getInstance().getMonitorAreaContaining (bounds.getCentre());
+		limits = Desktop::getInstance().getDisplays().getDisplayContaining (bounds.getCentre()).userArea;
 	}
 	else
 	{
@@ -21266,13 +21284,13 @@ private:
 
 	void calculateWindowPos (const Rectangle<int>& target, const bool alignToRectangle)
 	{
-		const Rectangle<int> mon (Desktop::getInstance()
-									 .getMonitorAreaContaining (target.getCentre(),
-															   #if JUCE_MAC
-																true));
-															   #else
-																false)); // on windows, don't stop the menu overlapping the taskbar
-															   #endif
+		const Rectangle<int> mon (Desktop::getInstance().getDisplays()
+									 .getDisplayContaining (target.getCentre())
+														   #if JUCE_MAC
+															.userArea);
+														   #else
+															.totalArea); // on windows, don't stop the menu overlapping the taskbar
+														   #endif
 
 		const int maxMenuHeight = mon.getHeight() - 24;
 
@@ -21441,7 +21459,8 @@ private:
 												windowPos.getHeight() - (PopupMenuSettings::scrollZone + m->getHeight())),
 										  currentY);
 
-					const Rectangle<int> mon (Desktop::getInstance().getMonitorAreaContaining (windowPos.getPosition(), true));
+					const Rectangle<int> mon (Desktop::getInstance().getDisplays()
+												.getDisplayContaining (windowPos.getPosition()).userArea);
 
 					int deltaY = wantedY - currentY;
 
@@ -35219,7 +35238,7 @@ public:
 	{
 		AttributedString s;
 		s.setJustification (Justification::topLeft);
-		s.append (getName(), getFont());
+		s.append (getText(), getFont());
 
 		TextLayout text;
 		text.createLayoutWithBalancedLineLengths (s, width - 8.0f);
@@ -37453,13 +37472,13 @@ bool ResizableWindow::restoreWindowStateFromString (const String& s)
 
 	{
 		Desktop& desktop = Desktop::getInstance();
-		RectangleList allMonitors (desktop.getAllMonitorDisplayAreas());
+		RectangleList allMonitors (desktop.getDisplays().getRectangleList (true));
 		allMonitors.clipTo (newPos);
 		const Rectangle<int> onScreenArea (allMonitors.getBounds());
 
 		if (onScreenArea.getWidth() * onScreenArea.getHeight() < 32 * 32)
 		{
-			const Rectangle<int> screen (desktop.getMonitorAreaContaining (newPos.getCentre()));
+			const Rectangle<int> screen (desktop.getDisplays().getDisplayContaining (newPos.getCentre()).userArea);
 
 			newPos.setSize (jmin (newPos.getWidth(),  screen.getWidth()),
 							jmin (newPos.getHeight(), screen.getHeight()));
@@ -37664,15 +37683,16 @@ void TooltipWindow::showFor (const String& tip)
 
 	Point<int> mousePos (Desktop::getMousePosition());
 	Rectangle<int> parentArea;
+	Component* const parent = getParentComponent();
 
-	if (getParentComponent() != nullptr)
+	if (parent != nullptr)
 	{
-		mousePos = getParentComponent()->getLocalPoint (nullptr, mousePos);
-		parentArea = getParentComponent()->getLocalBounds();
+		mousePos   = parent->getLocalPoint (nullptr, mousePos);
+		parentArea = parent->getLocalBounds();
 	}
 	else
 	{
-		parentArea = Desktop::getInstance().getMonitorAreaContaining (mousePos);
+		parentArea = Desktop::getInstance().getDisplays().getDisplayContaining (mousePos).userArea;
 	}
 
 	int w, h;
@@ -37690,18 +37710,16 @@ void TooltipWindow::showFor (const String& tip)
 	else
 		y += 6;
 
-	x = jlimit (parentArea.getX(), parentArea.getRight() - w, x);
+	x = jlimit (parentArea.getX(), parentArea.getRight()  - w, x);
 	y = jlimit (parentArea.getY(), parentArea.getBottom() - h, y);
 
 	setBounds (x, y, w, h);
 	setVisible (true);
 
-	if (getParentComponent() == nullptr)
-	{
+	if (parent == nullptr)
 		addToDesktop (ComponentPeer::windowHasDropShadow
 						| ComponentPeer::windowIsTemporary
 						| ComponentPeer::windowIgnoresKeyPresses);
-	}
 
 	toFront (false);
 }
@@ -40453,7 +40471,7 @@ CGRect UIViewComponentPeer::constrainRect (CGRect r)
 		Rectangle<int> original (convertToRectInt (current));
 
 		constrainer->checkBounds (pos, original,
-								  Desktop::getInstance().getAllMonitorDisplayAreas().getBounds(),
+								  Desktop::getInstance().getDisplays().getTotalBounds (true),
 								  pos.getY() != original.getY() && pos.getBottom() == original.getBottom(),
 								  pos.getX() != original.getX() && pos.getRight()  == original.getRight(),
 								  pos.getY() == original.getY() && pos.getBottom() != original.getBottom(),
@@ -40486,7 +40504,7 @@ void UIViewComponentPeer::setFullScreen (bool shouldBeFullScreen)
 {
 	if (! isSharedWindow)
 	{
-		Rectangle<int> r (shouldBeFullScreen ? Desktop::getInstance().getMainMonitorArea()
+		Rectangle<int> r (shouldBeFullScreen ? Desktop::getInstance().getDisplays().getMainDisplay().userArea
 											 : lastNonFullscreenBounds);
 
 		if ((! shouldBeFullScreen) && r.isEmpty())
@@ -40529,9 +40547,11 @@ BOOL UIViewComponentPeer::shouldRotate (UIInterfaceOrientation interfaceOrientat
 
 void UIViewComponentPeer::displayRotated()
 {
+	Desktop& desktop = Desktop::getInstance();
 	const Rectangle<int> oldArea (component->getBounds());
-	const Rectangle<int> oldDesktop (Desktop::getInstance().getMainMonitorArea());
-	Desktop::getInstance().refreshMonitorSizes();
+	const Rectangle<int> oldDesktop (desktop.getDisplays().getMainDisplay().userArea);
+
+	const_cast <Desktop::Displays&> (desktop.getDisplays()).refresh();
 
 	if (fullScreen)
 	{
@@ -40545,7 +40565,7 @@ void UIViewComponentPeer::displayRotated()
 		const float t = oldArea.getY() / (float) oldDesktop.getHeight();
 		const float b = oldArea.getBottom() / (float) oldDesktop.getHeight();
 
-		const Rectangle<int> newDesktop (Desktop::getInstance().getMainMonitorArea());
+		const Rectangle<int> newDesktop (desktop.getDisplays().getMainDisplay().userArea);
 
 		setBounds ((int) (l * newDesktop.getWidth()),
 				   (int) (t * newDesktop.getHeight()),
@@ -40813,7 +40833,7 @@ void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDis
 	[[UIApplication sharedApplication] setStatusBarHidden: enableOrDisable
 											withAnimation: UIStatusBarAnimationSlide];
 
-	Desktop::getInstance().refreshMonitorSizes();
+	displays.refresh();
 
 	ComponentPeer* const peer = kioskModeComponent->getPeer();
 
@@ -41164,15 +41184,23 @@ Desktop::DisplayOrientation Desktop::getCurrentOrientation() const
 	return convertToJuceOrientation ([[UIApplication sharedApplication] statusBarOrientation]);
 }
 
-void Desktop::getCurrentMonitorPositions (Array <Rectangle <int> >& monitorCoords, const bool clipToWorkArea)
+void Desktop::Displays::findDisplays()
 {
 	JUCE_AUTORELEASEPOOL
-	monitorCoords.clear();
 
-	CGRect r = clipToWorkArea ? [[UIScreen mainScreen] applicationFrame]
-							  : [[UIScreen mainScreen] bounds];
+	UIScreen* s = [UIScreen mainScreen];
 
-	monitorCoords.add (UIViewComponentPeer::realScreenPosToRotated (convertToRectInt (r)));
+	Display d;
+	d.userArea  = UIViewComponentPeer::realScreenPosToRotated (convertToRectInt ([s applicationFrame]));
+	d.totalArea = UIViewComponentPeer::realScreenPosToRotated (convertToRectInt ([s bounds]));
+	d.isMain = true;
+
+	if ([s respondsToSelector: @selector (scale)])
+		d.scale = s.scale;
+	else
+		d.scale = 1.0;
+
+	displays.add (d);
 }
 
 /*** End of inlined file: juce_ios_Windowing.mm ***/
@@ -42267,6 +42295,7 @@ NSRect NSViewComponentPeer::constrainRect (NSRect r)
 
 		Rectangle<int> pos (convertToRectInt (r));
 		Rectangle<int> original (convertToRectInt (current));
+		const Rectangle<int> screenBounds (Desktop::getInstance().getDisplays().getTotalBounds (true));
 
 	   #if defined (MAC_OS_X_VERSION_10_6) && MAC_OS_X_VERSION_MIN_ALLOWED >= MAC_OS_X_VERSION_10_6
 		if ([window inLiveResize])
@@ -42275,14 +42304,12 @@ NSRect NSViewComponentPeer::constrainRect (NSRect r)
 			 && [window performSelector: @selector (inLiveResize)])
 	   #endif
 		{
-			constrainer->checkBounds (pos, original,
-									  Desktop::getInstance().getAllMonitorDisplayAreas().getBounds(),
+			constrainer->checkBounds (pos, original, screenBounds,
 									  false, false, true, true);
 		}
 		else
 		{
-			constrainer->checkBounds (pos, original,
-									  Desktop::getInstance().getAllMonitorDisplayAreas().getBounds(),
+			constrainer->checkBounds (pos, original, screenBounds,
 									  pos.getY() != original.getY() && pos.getBottom() == original.getBottom(),
 									  pos.getX() != original.getX() && pos.getRight() == original.getRight(),
 									  pos.getY() == original.getY() && pos.getBottom() != original.getBottom(),
@@ -42928,7 +42955,7 @@ void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDis
 
 			[NSApp setPresentationOptions: (allowMenusAndBars ? (NSApplicationPresentationAutoHideDock | NSApplicationPresentationAutoHideMenuBar)
 															  : (NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar))];
-			kioskModeComponent->setBounds (Desktop::getInstance().getMainMonitorArea (false));
+			kioskModeComponent->setBounds (Desktop::getInstance().getDisplays().getMainDisplay().totalArea);
 			peer->becomeKeyWindow();
 		}
 		else
@@ -42946,7 +42973,7 @@ void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDis
 	if (enableOrDisable)
 	{
 		SetSystemUIMode (kUIModeAllSuppressed, allowMenusAndBars ? kUIOptionAutoShowMenuBar : 0);
-		kioskModeComponent->setBounds (Desktop::getInstance().getMainMonitorArea (false));
+		kioskModeComponent->setBounds (Desktop::getInstance().getDisplays().getMainDisplay().totalArea);
 	}
 	else
 	{
@@ -43315,7 +43342,7 @@ public:
 
 	static void displayReconfigurationCallBack (CGDirectDisplayID, CGDisplayChangeSummaryFlags, void*)
 	{
-		Desktop::getInstance().refreshMonitorSizes();
+		const_cast <Desktop::Displays&> (Desktop::getInstance().getDisplays()).refresh();
 	}
 
 	juce_DeclareSingleton_SingleThreaded_Minimal (DisplaySettingsChangeCallback);
@@ -43326,29 +43353,39 @@ private:
 
 juce_ImplementSingleton_SingleThreaded (DisplaySettingsChangeCallback);
 
-void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords, const bool clipToWorkArea)
+static Rectangle<int> convertDisplayRect (NSRect r, CGFloat mainScreenBottom)
+{
+	r.origin.y = mainScreenBottom - (r.origin.y + r.size.height);
+	return convertToRectInt (r);
+}
+
+void Desktop::Displays::findDisplays()
 {
 	JUCE_AUTORELEASEPOOL
 
 	DisplaySettingsChangeCallback::getInstance();
 
-	monitorCoords.clear();
 	NSArray* screens = [NSScreen screens];
-	const CGFloat mainScreenBottom = [[[NSScreen screens] objectAtIndex: 0] frame].size.height;
+	const CGFloat mainScreenBottom = [[screens objectAtIndex: 0] frame].size.height;
 
 	for (unsigned int i = 0; i < [screens count]; ++i)
 	{
 		NSScreen* s = (NSScreen*) [screens objectAtIndex: i];
 
-		NSRect r = clipToWorkArea ? [s visibleFrame]
-								  : [s frame];
+		Display d;
+		d.userArea  = convertDisplayRect ([s visibleFrame], mainScreenBottom);
+		d.totalArea = convertDisplayRect ([s frame], mainScreenBottom);
+		d.isMain = (i == 0);
 
-		r.origin.y = mainScreenBottom - (r.origin.y + r.size.height);
+	   #if defined (MAC_OS_X_VERSION_10_7) && (MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7)
+		if ([s respondsToSelector: @selector (backingScaleFactor)])
+			d.scale = s.backingScaleFactor;
+		else
+	   #endif
+			d.scale = 1.0;
 
-		monitorCoords.add (convertToRectInt (r));
+		displays.add (d);
 	}
-
-	jassert (monitorCoords.size() > 0);
 }
 
 Image juce_createIconForFile (const File& file)
@@ -46498,7 +46535,7 @@ private:
 			Rectangle<int> pos (rectangleFromRECT (*r));
 
 			constrainer->checkBounds (pos, windowBorder.addedTo (component->getBounds()),
-									  Desktop::getInstance().getAllMonitorDisplayAreas().getBounds(),
+									  Desktop::getInstance().getDisplays().getTotalBounds (true),
 									  wParam == WMSZ_TOP    || wParam == WMSZ_TOPLEFT    || wParam == WMSZ_TOPRIGHT,
 									  wParam == WMSZ_LEFT   || wParam == WMSZ_TOPLEFT    || wParam == WMSZ_BOTTOMLEFT,
 									  wParam == WMSZ_BOTTOM || wParam == WMSZ_BOTTOMLEFT || wParam == WMSZ_BOTTOMRIGHT,
@@ -46523,7 +46560,7 @@ private:
 				const Rectangle<int> current (windowBorder.addedTo (component->getBounds()));
 
 				constrainer->checkBounds (pos, current,
-										  Desktop::getInstance().getAllMonitorDisplayAreas().getBounds(),
+										  Desktop::getInstance().getDisplays().getTotalBounds (true),
 										  pos.getY() != current.getY() && pos.getBottom() == current.getBottom(),
 										  pos.getX() != current.getX() && pos.getRight() == current.getRight(),
 										  pos.getY() == current.getY() && pos.getBottom() != current.getBottom(),
@@ -46616,7 +46653,7 @@ private:
 
 	void doSettingChange()
 	{
-		Desktop::getInstance().refreshMonitorSizes();
+		const_cast <Desktop::Displays&> (Desktop::getInstance().getDisplays()).refresh();
 
 		if (fullScreen && ! isMinimised())
 		{
@@ -47540,7 +47577,7 @@ String SystemClipboard::getTextFromClipboard()
 void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDisable, bool /*allowMenusAndBars*/)
 {
 	if (enableOrDisable)
-		kioskModeComponent->setBounds (Desktop::getInstance().getMainMonitorArea (false));
+		kioskModeComponent->setBounds (getDisplays().getMainDisplay().totalArea);
 }
 
 static BOOL CALLBACK enumMonitorsProc (HMONITOR, HDC, LPRECT r, LPARAM userInfo)
@@ -47550,30 +47587,37 @@ static BOOL CALLBACK enumMonitorsProc (HMONITOR, HDC, LPRECT r, LPARAM userInfo)
 	return TRUE;
 }
 
-void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords, const bool clipToWorkArea)
+void Desktop::Displays::findDisplays()
 {
-	EnumDisplayMonitors (0, 0, &enumMonitorsProc, (LPARAM) &monitorCoords);
+	Array <Rectangle<int> > monitors;
+	EnumDisplayMonitors (0, 0, &enumMonitorsProc, (LPARAM) &monitors);
 
 	// make sure the first in the list is the main monitor
-	for (int i = 1; i < monitorCoords.size(); ++i)
-		if (monitorCoords[i].getX() == 0 && monitorCoords[i].getY() == 0)
-			monitorCoords.swap (i, 0);
+	for (int i = 1; i < monitors.size(); ++i)
+		if (monitors.getReference(i).getX() == 0 && monitors.getReference(i).getY() == 0)
+			monitors.swap (i, 0);
 
-	if (monitorCoords.size() == 0)
+	if (monitors.size() == 0)
 	{
 		RECT r;
 		GetWindowRect (GetDesktopWindow(), &r);
-		monitorCoords.add (rectangleFromRECT (r));
+		monitors.add (rectangleFromRECT (r));
 	}
 
-	if (clipToWorkArea)
-	{
-		// clip the main monitor to the active non-taskbar area
-		RECT r;
-		SystemParametersInfo (SPI_GETWORKAREA, 0, &r, 0);
+	RECT workArea;
+	SystemParametersInfo (SPI_GETWORKAREA, 0, &workArea, 0);
 
-		Rectangle<int>& screen = monitorCoords.getReference (0);
-		screen = screen.getIntersection (rectangleFromRECT (r));
+	for (int i = 0; i < monitors.size(); ++i)
+	{
+		Display d;
+		d.userArea = d.totalArea = monitors.getReference(i);
+		d.isMain = (i == 0);
+		d.scale = 1.0;
+
+		if (i == 0)
+			d.userArea = d.userArea.getIntersection (rectangleFromRECT (workArea));
+
+		displays.add (d);
 	}
 }
 
@@ -48113,7 +48157,7 @@ void FileChooser::showPlatformDialog (Array<File>& results, const String& title_
 	// use a modal window as the parent for this dialog box
 	// to block input from other app windows
 	Component parentWindow (String::empty);
-	const Rectangle<int> mainMon (Desktop::getInstance().getMainMonitorArea());
+	const Rectangle<int> mainMon (Desktop::getInstance().getDisplays().getMainDisplay().userArea);
 	parentWindow.setBounds (mainMon.getX() + mainMon.getWidth() / 4,
 							mainMon.getY() + mainMon.getHeight() / 4,
 							0, 0);
@@ -49382,7 +49426,7 @@ public:
 		if (fullScreen != shouldBeFullScreen)
 		{
 			if (shouldBeFullScreen)
-				r = Desktop::getInstance().getMainMonitorArea();
+				r = Desktop::getInstance().getDisplays().getMainDisplay().userArea;
 
 			if (! r.isEmpty())
 				setBounds (r.getX(), r.getY(), r.getWidth(), r.getHeight(), shouldBeFullScreen);
@@ -49706,7 +49750,7 @@ public:
 			keyCode = (int) unicodeChar;
 
 			if (keyCode < 0x20)
-				keyCode = XKeycodeToKeysym (display, keyEvent->keycode, currentModifiers.isShiftDown() ? 1 : 0);
+				keyCode = XkbKeycodeToKeysym (display, keyEvent->keycode, 0, currentModifiers.isShiftDown() ? 1 : 0);
 
 			keyDownChange = (sym != NoSymbol) && ! updateKeyModifiersFromSym (sym, true);
 		}
@@ -49809,7 +49853,7 @@ public:
 
 			{
 				ScopedXLock xlock;
-				sym = XKeycodeToKeysym (display, keyEvent->keycode, 0);
+				sym = XkbKeycodeToKeysym (display, keyEvent->keycode, 0, 0);
 			}
 
 			const ModifierKeys oldMods (currentModifiers);
@@ -51002,7 +51046,7 @@ ModifierKeys ModifierKeys::getCurrentModifiersRealtime() noexcept
 void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDisable, bool allowMenusAndBars)
 {
 	if (enableOrDisable)
-		kioskModeComponent->setBounds (Desktop::getInstance().getMainMonitorArea (false));
+		kioskModeComponent->setBounds (Desktop::getInstance().getDisplays().getMainDisplay().totalArea);
 }
 
 ComponentPeer* Component::createNewPeer (int styleFlags, void* nativeWindowToAttachTo)
@@ -51037,7 +51081,7 @@ void juce_windowMessageReceive (XEvent* event)
 	}
 }
 
-void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords, const bool /*clipToWorkArea*/)
+void Desktop::Displays::findDisplays()
 {
 	if (display == 0)
 		return;
@@ -51048,8 +51092,8 @@ void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords
 	ScopedXLock xlock;
 	if (XQueryExtension (display, "XINERAMA", &major_opcode, &first_event, &first_error))
 	{
-		typedef Bool (*tXineramaIsActive) (Display*);
-		typedef XineramaScreenInfo* (*tXineramaQueryScreens) (Display*, int*);
+		typedef Bool (*tXineramaIsActive) (::Display*);
+		typedef XineramaScreenInfo* (*tXineramaQueryScreens) (::Display*, int*);
 
 		static tXineramaIsActive xXineramaIsActive = 0;
 		static tXineramaQueryScreens xXineramaQueryScreens = 0;
@@ -51075,21 +51119,24 @@ void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords
 			int numMonitors = 0;
 			XineramaScreenInfo* const screens = xXineramaQueryScreens (display, &numMonitors);
 
-			if (screens != 0)
+			if (screens != nullptr)
 			{
-				for (int i = numMonitors; --i >= 0;)
+				for (int index = 0; index < numMonitors; ++index)
 				{
-					int index = screens[i].screen_number;
-
-					if (index >= 0)
+					for (int j = numMonitors; --j >= 0;)
 					{
-						while (monitorCoords.size() < index)
-							monitorCoords.add (Rectangle<int>());
+						if (screens[j].screen_number == index)
+						{
+							Display d;
+							d.userArea = d.totalArea = Rectangle<int> (screens[j].x_org,
+																	   screens[j].y_org,
+																	   screens[j].width,
+																	   screens[j].height);
+							d.isMain = (index == 0);
+							d.scale = 1.0;
 
-						monitorCoords.set (index, Rectangle<int> (screens[i].x_org,
-																  screens[i].y_org,
-																  screens[i].width,
-																  screens[i].height));
+							displays.add (d);
+						}
 					}
 				}
 
@@ -51098,7 +51145,7 @@ void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords
 		}
 	}
 
-	if (monitorCoords.size() == 0)
+	if (displays.size() == 0)
   #endif
 	{
 		Atom hints = Atoms::getIfExists ("_NET_WORKAREA");
@@ -51123,18 +51170,30 @@ void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords
 					const long* const position = (const long*) data;
 
 					if (actualType == XA_CARDINAL && actualFormat == 32 && nitems == 4)
-						monitorCoords.add (Rectangle<int> (position[0], position[1],
-														   position[2], position[3]));
+					{
+						Display d;
+						d.userArea = d.totalArea = Rectangle<int> (position[0], position[1],
+																   position[2], position[3]);
+						d.isMain = (displays.size() == 0);
+						d.scale = 1.0;
+
+						displays.add (d);
+					}
 
 					XFree (data);
 				}
 			}
 		}
 
-		if (monitorCoords.size() == 0)
+		if (displays.size() == 0)
 		{
-			monitorCoords.add (Rectangle<int> (DisplayWidth (display, DefaultScreen (display)),
-											   DisplayHeight (display, DefaultScreen (display))));
+			Display d;
+			d.userArea = d.totalArea = Rectangle<int> (DisplayWidth (display, DefaultScreen (display)),
+													   DisplayHeight (display, DefaultScreen (display)));
+			d.isMain = true;
+			d.scale = 1.0;
+
+			displays.add (d);
 		}
 	}
 }
@@ -52193,7 +52252,7 @@ public:
 
 	void setFullScreen (bool shouldBeFullScreen)
 	{
-		Rectangle<int> r (shouldBeFullScreen ? Desktop::getInstance().getMainMonitorArea()
+		Rectangle<int> r (shouldBeFullScreen ? Desktop::getInstance().getDisplays().getMainDisplay().userArea
 											 : lastNonFullscreenBounds);
 
 		if ((! shouldBeFullScreen) && r.isEmpty())
@@ -52589,9 +52648,14 @@ void Desktop::setKioskComponent (Component* kioskModeComponent, bool enableOrDis
 	// TODO
 }
 
-void Desktop::getCurrentMonitorPositions (Array <Rectangle<int> >& monitorCoords, const bool clipToWorkArea)
+void Desktop::Displays::findDisplays()
 {
-	monitorCoords.add (Rectangle<int> (android.screenWidth, android.screenHeight));
+	Display d;
+	d.userArea = d.totalArea = Rectangle<int> (android.screenWidth, android.screenHeight);
+	d.isMain = true;
+	d.scale = 1.0;
+
+	displays.add (d);
 }
 
 JUCE_JNI_CALLBACK (JUCE_ANDROID_ACTIVITY_CLASSNAME, setScreenSize, void, (JNIEnv* env, jobject activity,
@@ -52601,7 +52665,7 @@ JUCE_JNI_CALLBACK (JUCE_ANDROID_ACTIVITY_CLASSNAME, setScreenSize, void, (JNIEnv
 	android.screenWidth = screenWidth;
 	android.screenHeight = screenHeight;
 
-	Desktop::getInstance().refreshMonitorSizes();
+	const_cast <Desktop::Displays&> (Desktop::getInstance().getDisplays()).refresh();
 }
 
 Image juce_createIconForFile (const File& file)

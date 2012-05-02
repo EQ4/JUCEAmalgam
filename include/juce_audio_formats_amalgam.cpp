@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -1663,10 +1664,7 @@ bool AudioFormatWriter::writeFromAudioSource (AudioSource& source, int numSample
 	{
 		const int numToDo = jmin (numSamplesToRead, samplesPerBlock);
 
-		AudioSourceChannelInfo info;
-		info.buffer = &tempBuffer;
-		info.startSample = 0;
-		info.numSamples = numToDo;
+		AudioSourceChannelInfo info (&tempBuffer, 0, numToDo);
 		info.clearActiveBufferRegion();
 
 		source.getNextAudioBlock (info);
@@ -92411,7 +92409,7 @@ namespace WavFileHelpers
 		uint8 reserved[190];
 		char codingHistory[1];
 
-		void copyTo (StringPairArray& values) const
+		void copyTo (StringPairArray& values, const int totalSize) const
 		{
 			values.set (WavAudioFormat::bwavDescription, String::fromUTF8 (description, 256));
 			values.set (WavAudioFormat::bwavOriginator, String::fromUTF8 (originator, 32));
@@ -92424,7 +92422,8 @@ namespace WavFileHelpers
 			const int64 time = (((int64)timeHigh) << 32) + timeLow;
 
 			values.set (WavAudioFormat::bwavTimeReference, String (time));
-			values.set (WavAudioFormat::bwavCodingHistory, String::fromUTF8 (codingHistory));
+			values.set (WavAudioFormat::bwavCodingHistory,
+						String::fromUTF8 (codingHistory, totalSize - offsetof (BWAVChunk, codingHistory)));
 		}
 
 		static MemoryBlock createFrom (const StringPairArray& values)
@@ -92862,7 +92861,9 @@ public:
 						}
 						else
 						{
-							input->skipNextBytes (10); // skip over bitsPerSample and speakerPosition mask
+							input->skipNextBytes (6); // skip over bitsPerSample
+							metadataValues.set ("ChannelMask", String (input->readInt()));
+
 							ExtensibleWavSubFormat subFormat;
 							subFormat.data1 = (uint32) input->readInt();
 							subFormat.data2 = (uint16) input->readShort();
@@ -92907,7 +92908,7 @@ public:
 					HeapBlock <BWAVChunk> bwav;
 					bwav.calloc (jmax ((size_t) length + 1, sizeof (BWAVChunk)), 1);
 					input->read (bwav, (int) length);
-					bwav->copyTo (metadataValues);
+					bwav->copyTo (metadataValues, (int) length);
 				}
 				else if (chunkType == chunkName ("smpl"))
 				{

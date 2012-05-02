@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -418,8 +419,6 @@
 namespace juce
 {
 
-// START_AUTOINCLUDE colour/*.cpp, geometry/*.cpp, placement/*.cpp, contexts/*.cpp, images/*.cpp,
-// image_formats/*.cpp, fonts/*.cpp, effects/*.cpp
 
 /*** Start of inlined file: juce_Colour.cpp ***/
 namespace ColourHelpers
@@ -791,7 +790,6 @@ String Colour::toDisplayString (const bool includeAlphaValue) const
 }
 
 /*** End of inlined file: juce_Colour.cpp ***/
-
 
 
 /*** Start of inlined file: juce_ColourGradient.cpp ***/
@@ -61701,6 +61699,72 @@ void AttributedString::draw (Graphics& g, const Rectangle<float>& area) const
 /*** End of inlined file: juce_AttributedString.cpp ***/
 
 
+/*** Start of inlined file: juce_Typeface.cpp ***/
+namespace FontStyleHelpers
+{
+	static const char* getStyleName (const bool bold,
+									 const bool italic) noexcept
+	{
+		if (bold && ! italic)   return "Bold";
+		if (italic && ! bold)   return "Italic";
+		if (bold && italic)     return "Bold Italic";
+		return "Regular";
+	}
+
+	static bool isBold (const String& style) noexcept
+	{
+		return style.containsWholeWordIgnoreCase ("Bold");
+	}
+
+	static bool isItalic (const String& style) noexcept
+	{
+		return style.containsWholeWordIgnoreCase ("Italic")
+			|| style.containsWholeWordIgnoreCase ("Oblique");
+	}
+
+	static bool isPlaceholderFamilyName (const String& family)
+	{
+		return family == Font::getDefaultSansSerifFontName()
+			|| family == Font::getDefaultSerifFontName()
+			|| family == Font::getDefaultMonospacedFontName();
+	}
+
+	static String getConcreteFamilyNameFromPlaceholder (const String& family)
+	{
+		const Font f (family, Font::getDefaultStyle(), 15.0f);
+		return Font::getDefaultTypefaceForFont (f)->getName();
+	}
+}
+
+Typeface::Typeface (const String& name_, const String& style_) noexcept
+	: name (name_), style (style_)
+{
+}
+
+Typeface::~Typeface()
+{
+}
+
+Typeface::Ptr Typeface::getFallbackTypeface()
+{
+	const Font fallbackFont (Font::getFallbackFontName(), Font::getFallbackFontStyle(), 10.0f);
+	return fallbackFont.getTypeface();
+}
+
+EdgeTable* Typeface::getEdgeTableForGlyph (int glyphNumber, const AffineTransform& transform)
+{
+	Path path;
+
+	if (getOutlineForGlyph (glyphNumber, path) && ! path.isEmpty())
+		return new EdgeTable (path.getBoundsTransformed (transform).getSmallestIntegerContainer().expanded (1, 0),
+							  path, transform);
+
+	return nullptr;
+}
+
+/*** End of inlined file: juce_Typeface.cpp ***/
+
+
 /*** Start of inlined file: juce_CustomTypeface.cpp ***/
 class CustomTypeface::GlyphInfo
 {
@@ -61779,13 +61843,13 @@ namespace CustomTypefaceHelpers
 }
 
 CustomTypeface::CustomTypeface()
-	: Typeface (String::empty)
+	: Typeface (String::empty, String::empty)
 {
 	clear();
 }
 
 CustomTypeface::CustomTypeface (InputStream& serialisedTypefaceStream)
-	: Typeface (String::empty)
+	: Typeface (String::empty, String::empty)
 {
 	clear();
 
@@ -61793,8 +61857,11 @@ CustomTypeface::CustomTypeface (InputStream& serialisedTypefaceStream)
 	BufferedInputStream in (gzin, 32768);
 
 	name = in.readString();
-	isBold = in.readBool();
-	isItalic = in.readBool();
+
+	const bool isBold   = in.readBool();
+	const bool isItalic = in.readBool();
+	style = FontStyleHelpers::getStyleName (isBold, isItalic);
+
 	ascent = in.readFloat();
 	defaultCharacter = CustomTypefaceHelpers::readChar (in);
 
@@ -61829,19 +61896,27 @@ void CustomTypeface::clear()
 {
 	defaultCharacter = 0;
 	ascent = 1.0f;
-	isBold = isItalic = false;
+	style = "Regular";
 	zeromem (lookupTable, sizeof (lookupTable));
 	glyphs.clear();
 }
 
-void CustomTypeface::setCharacteristics (const String& name_, const float ascent_, const bool isBold_,
-										 const bool isItalic_, const juce_wchar defaultCharacter_) noexcept
+void CustomTypeface::setCharacteristics (const String& name_, const float ascent_, const bool isBold,
+										 const bool isItalic, const juce_wchar defaultCharacter_) noexcept
 {
 	name = name_;
 	defaultCharacter = defaultCharacter_;
 	ascent = ascent_;
-	isBold = isBold_;
-	isItalic = isItalic_;
+	style = FontStyleHelpers::getStyleName (isBold, isItalic);
+}
+
+void CustomTypeface::setCharacteristics (const String& name_, const String& style_, const float ascent_,
+										 const juce_wchar defaultCharacter_) noexcept
+{
+	name = name_;
+	style = style_;
+	defaultCharacter = defaultCharacter_;
+	ascent = ascent_;
 }
 
 void CustomTypeface::addGlyph (const juce_wchar character, const Path& path, const float width) noexcept
@@ -61892,7 +61967,7 @@ bool CustomTypeface::loadGlyphIfPossible (const juce_wchar /*characterNeeded*/)
 
 void CustomTypeface::addGlyphsFromOtherTypeface (Typeface& typefaceToCopy, juce_wchar characterStartIndex, int numCharacters) noexcept
 {
-	setCharacteristics (name, typefaceToCopy.getAscent(), isBold, isItalic, defaultCharacter);
+	setCharacteristics (name, style, typefaceToCopy.getAscent(), defaultCharacter);
 
 	for (int i = 0; i < numCharacters; ++i)
 	{
@@ -61932,8 +62007,8 @@ bool CustomTypeface::writeToStream (OutputStream& outputStream)
 	GZIPCompressorOutputStream out (&outputStream);
 
 	out.writeString (name);
-	out.writeBool (isBold);
-	out.writeBool (isItalic);
+	out.writeBool (FontStyleHelpers::isBold (style));
+	out.writeBool (FontStyleHelpers::isItalic (style));
 	out.writeFloat (ascent);
 	CustomTypefaceHelpers::writeChar (out, defaultCharacter);
 	out.writeInt (glyphs.size());
@@ -62095,6 +62170,7 @@ namespace FontValues
 
 	const float defaultFontHeight = 14.0f;
 	String fallbackFont;
+	String fallbackFontStyle;
 }
 
 typedef Typeface::Ptr (*GetTypefaceForFont) (const Font&);
@@ -62124,16 +62200,18 @@ public:
 
 	Typeface::Ptr findTypefaceFor (const Font& font)
 	{
-		const int flags = font.getStyleFlags() & (Font::bold | Font::italic);
 		const String faceName (font.getTypefaceName());
+		const String faceStyle (font.getTypefaceStyle());
 
-		int i;
-		for (i = faces.size(); --i >= 0;)
+		jassert (faceName.isNotEmpty());
+
+		for (int i = faces.size(); --i >= 0;)
 		{
 			CachedFace& face = faces.getReference(i);
 
-			if (face.flags == flags
-				 && face.typefaceName == faceName
+			if (face.typefaceName == faceName
+				 && face.typefaceStyle == faceStyle
+				 && face.typeface != nullptr
 				 && face.typeface->isSuitableForFont (font))
 			{
 				face.lastUsageCount = ++counter;
@@ -62144,7 +62222,7 @@ public:
 		int replaceIndex = 0;
 		size_t bestLastUsageCount = std::numeric_limits<int>::max();
 
-		for (i = faces.size(); --i >= 0;)
+		for (int i = faces.size(); --i >= 0;)
 		{
 			const size_t lu = faces.getReference(i).lastUsageCount;
 
@@ -62157,7 +62235,7 @@ public:
 
 		CachedFace& face = faces.getReference (replaceIndex);
 		face.typefaceName = faceName;
-		face.flags = flags;
+		face.typefaceStyle = faceStyle;
 		face.lastUsageCount = ++counter;
 
 		if (juce_getTypefaceForFont == nullptr)
@@ -62182,7 +62260,7 @@ private:
 	struct CachedFace
 	{
 		CachedFace() noexcept
-			: lastUsageCount (0), flags (-1)
+			: lastUsageCount (0)
 		{
 		}
 
@@ -62191,8 +62269,8 @@ private:
 		// Since the typeface itself doesn't know that it may have this alias, the name under
 		// which it was fetched needs to be stored separately.
 		String typefaceName;
+		String typefaceStyle;
 		size_t lastUsageCount;
-		int flags;
 		Typeface::Ptr typeface;
 	};
 
@@ -62213,47 +62291,54 @@ void Typeface::setTypefaceCacheSize (int numFontsToCache)
 class Font::SharedFontInternal  : public SingleThreadedReferenceCountedObject
 {
 public:
-	SharedFontInternal (const float height_, const int styleFlags_) noexcept
+	SharedFontInternal (const String& typefaceStyle_, const float height_) noexcept
 		: typefaceName (Font::getDefaultSansSerifFontName()),
+		  typefaceStyle (typefaceStyle_),
 		  height (height_),
 		  horizontalScale (1.0f),
 		  kerning (0),
 		  ascent (0),
-		  styleFlags (styleFlags_),
-		  typeface ((styleFlags_ & (Font::bold | Font::italic)) == 0
+		  underline (false),
+		  typeface (typefaceStyle_ == Font::getDefaultStyle()
 						? TypefaceCache::getInstance()->getDefaultTypeface() : nullptr)
 	{
 	}
 
-	SharedFontInternal (const String& typefaceName_, const float height_, const int styleFlags_) noexcept
+	SharedFontInternal (const String& typefaceName_, const String& typefaceStyle_, const float height_) noexcept
 		: typefaceName (typefaceName_),
+		  typefaceStyle (typefaceStyle_),
 		  height (height_),
 		  horizontalScale (1.0f),
 		  kerning (0),
 		  ascent (0),
-		  styleFlags (styleFlags_),
+		  underline (false),
 		  typeface (nullptr)
 	{
+		if (typefaceName.isEmpty())
+			typefaceName = Font::getDefaultSansSerifFontName();
 	}
 
 	SharedFontInternal (const Typeface::Ptr& typeface_) noexcept
 		: typefaceName (typeface_->getName()),
+		  typefaceStyle (typeface_->getStyle()),
 		  height (FontValues::defaultFontHeight),
 		  horizontalScale (1.0f),
 		  kerning (0),
 		  ascent (0),
-		  styleFlags (Font::plain),
+		  underline (false),
 		  typeface (typeface_)
 	{
+		jassert (typefaceName.isNotEmpty());
 	}
 
 	SharedFontInternal (const SharedFontInternal& other) noexcept
 		: typefaceName (other.typefaceName),
+		  typefaceStyle (other.typefaceStyle),
 		  height (other.height),
 		  horizontalScale (other.horizontalScale),
 		  kerning (other.kerning),
 		  ascent (other.ascent),
-		  styleFlags (other.styleFlags),
+		  underline (other.underline),
 		  typeface (other.typeface)
 	{
 	}
@@ -62261,30 +62346,46 @@ public:
 	bool operator== (const SharedFontInternal& other) const noexcept
 	{
 		return height == other.height
-				&& styleFlags == other.styleFlags
+				&& underline == other.underline
 				&& horizontalScale == other.horizontalScale
 				&& kerning == other.kerning
-				&& typefaceName == other.typefaceName;
+				&& typefaceName == other.typefaceName
+				&& typefaceStyle == other.typefaceStyle;
 	}
 
-	String typefaceName;
+	String typefaceName, typefaceStyle;
 	float height, horizontalScale, kerning, ascent;
-	int styleFlags;
+	bool underline;
 	Typeface::Ptr typeface;
 };
 
 Font::Font()
-	: font (new SharedFontInternal (FontValues::defaultFontHeight, Font::plain))
+	: font (new SharedFontInternal (Font::getDefaultStyle(), FontValues::defaultFontHeight))
 {
 }
 
 Font::Font (const float fontHeight, const int styleFlags)
-	: font (new SharedFontInternal (FontValues::limitFontHeight (fontHeight), styleFlags))
+	: font (new SharedFontInternal (Font::getDefaultStyle(), FontValues::limitFontHeight (fontHeight)))
 {
+	setStyleFlags (styleFlags);
 }
 
 Font::Font (const String& typefaceName, const float fontHeight, const int styleFlags)
-	: font (new SharedFontInternal (typefaceName, FontValues::limitFontHeight (fontHeight), styleFlags))
+	: font (new SharedFontInternal (typefaceName,
+									FontStyleHelpers::getStyleName ((styleFlags & bold) != 0,
+																	(styleFlags & italic) != 0),
+									FontValues::limitFontHeight (fontHeight)))
+{
+	setStyleFlags (styleFlags);
+}
+
+Font::Font (const String& typefaceStyle, float fontHeight)
+	: font (new SharedFontInternal (typefaceStyle, FontValues::limitFontHeight (fontHeight)))
+{
+}
+
+Font::Font (const String& typefaceName, const String& typefaceStyle, float fontHeight)
+	: font (new SharedFontInternal (typefaceName, typefaceStyle, FontValues::limitFontHeight (fontHeight)))
 {
 }
 
@@ -62356,6 +62457,12 @@ const String& Font::getDefaultMonospacedFontName()
 	return name;
 }
 
+const String& Font::getDefaultStyle()
+{
+	static const String style ("<Regular>");
+	return style;
+}
+
 const String& Font::getTypefaceName() const noexcept
 {
 	return font->typefaceName;
@@ -62365,11 +62472,34 @@ void Font::setTypefaceName (const String& faceName)
 {
 	if (faceName != font->typefaceName)
 	{
+		jassert (faceName.isNotEmpty());
+
 		dupeInternalIfShared();
 		font->typefaceName = faceName;
 		font->typeface = nullptr;
 		font->ascent = 0;
 	}
+}
+
+const String& Font::getTypefaceStyle() const noexcept
+{
+	return font->typefaceStyle;
+}
+
+void Font::setTypefaceStyle (const String& typefaceStyle)
+{
+	if (typefaceStyle != font->typefaceStyle)
+	{
+		dupeInternalIfShared();
+		font->typefaceStyle = typefaceStyle;
+		font->typeface = nullptr;
+		font->ascent = 0;
+	}
+}
+
+StringArray Font::getAvailableStyles() const
+{
+	return findAllTypefaceStyles (getTypeface()->getName());
 }
 
 Typeface* Font::getTypeface() const
@@ -62388,6 +62518,20 @@ const String& Font::getFallbackFontName()
 void Font::setFallbackFontName (const String& name)
 {
 	FontValues::fallbackFont = name;
+
+   #if JUCE_MAC || JUCE_IOS
+	jassertfalse; // Note that use of a fallback font isn't currently implemented in OSX..
+   #endif
+}
+
+const String& Font::getFallbackFontStyle()
+{
+	return FontValues::fallbackFontStyle;
+}
+
+void Font::setFallbackFontStyle (const String& style)
+{
+	FontValues::fallbackFontStyle = style;
 
    #if JUCE_MAC || JUCE_IOS
 	jassertfalse; // Note that use of a fallback font isn't currently implemented in OSX..
@@ -62431,7 +62575,12 @@ void Font::setHeightWithoutChangingWidth (float newHeight)
 
 int Font::getStyleFlags() const noexcept
 {
-	return font->styleFlags;
+	int styleFlags = font->underline ? underlined : plain;
+
+	if (isBold())    styleFlags |= bold;
+	if (isItalic())  styleFlags |= italic;
+
+	return styleFlags;
 }
 
 Font Font::withStyle (const int newFlags) const
@@ -62443,10 +62592,12 @@ Font Font::withStyle (const int newFlags) const
 
 void Font::setStyleFlags (const int newFlags)
 {
-	if (font->styleFlags != newFlags)
+	if (getStyleFlags() != newFlags)
 	{
 		dupeInternalIfShared();
-		font->styleFlags = newFlags;
+		font->typefaceStyle = FontStyleHelpers::getStyleName ((newFlags & bold) != 0,
+															  (newFlags & italic) != 0);
+		font->underline = (newFlags & underlined) != 0;
 		font->typeface = nullptr;
 		font->ascent = 0;
 	}
@@ -62470,6 +62621,26 @@ void Font::setSizeAndStyle (float newHeight,
 	}
 
 	setStyleFlags (newStyleFlags);
+}
+
+void Font::setSizeAndStyle (float newHeight,
+							const String& newStyle,
+							const float newHorizontalScale,
+							const float newKerningAmount)
+{
+	newHeight = FontValues::limitFontHeight (newHeight);
+
+	if (font->height != newHeight
+		 || font->horizontalScale != newHorizontalScale
+		 || font->kerning != newKerningAmount)
+	{
+		dupeInternalIfShared();
+		font->height = newHeight;
+		font->horizontalScale = newHorizontalScale;
+		font->kerning = newKerningAmount;
+	}
+
+	setTypefaceStyle (newStyle);
 }
 
 float Font::getHorizontalScale() const noexcept
@@ -62508,33 +62679,41 @@ void Font::setExtraKerningFactor (const float extraKerning)
 	font->kerning = extraKerning;
 }
 
-Font Font::boldened() const             { return withStyle (font->styleFlags | bold); }
-Font Font::italicised() const           { return withStyle (font->styleFlags | italic); }
+Font Font::boldened() const             { return withStyle (getStyleFlags() | bold); }
+Font Font::italicised() const           { return withStyle (getStyleFlags() | italic); }
 
-bool Font::isBold() const noexcept      { return (font->styleFlags & bold) != 0; }
-bool Font::isItalic() const noexcept    { return (font->styleFlags & italic) != 0; }
+bool Font::isBold() const noexcept
+{
+	return FontStyleHelpers::isBold (font->typefaceStyle);
+}
+
+bool Font::isItalic() const noexcept
+{
+	return FontStyleHelpers::isItalic (font->typefaceStyle);
+}
 
 void Font::setBold (const bool shouldBeBold)
 {
-	setStyleFlags (shouldBeBold ? (font->styleFlags | bold)
-								: (font->styleFlags & ~bold));
+	const int flags = getStyleFlags();
+	setStyleFlags (shouldBeBold ? (flags | bold)
+								: (flags & ~bold));
 }
 
 void Font::setItalic (const bool shouldBeItalic)
 {
-	setStyleFlags (shouldBeItalic ? (font->styleFlags | italic)
-								  : (font->styleFlags & ~italic));
+	const int flags = getStyleFlags();
+	setStyleFlags (shouldBeItalic ? (flags | italic)
+								  : (flags & ~italic));
 }
 
 void Font::setUnderline (const bool shouldBeUnderlined)
 {
-	setStyleFlags (shouldBeUnderlined ? (font->styleFlags | underlined)
-									  : (font->styleFlags & ~underlined));
+	font->underline = shouldBeUnderlined;
 }
 
 bool Font::isUnderlined() const noexcept
 {
-	return (font->styleFlags & underlined) != 0;
+	return font->underline;
 }
 
 float Font::getAscent() const
@@ -62594,22 +62773,29 @@ void Font::findFonts (Array<Font>& destArray)
 	const StringArray names (findAllTypefaceNames());
 
 	for (int i = 0; i < names.size(); ++i)
-		destArray.add (Font (names[i], FontValues::defaultFontHeight, Font::plain));
+	{
+		const StringArray styles (findAllTypefaceStyles (names[i]));
+
+		String style ("Regular");
+
+		if (! styles.contains (style, true))
+			style = styles[0];
+
+		destArray.add (Font (names[i],  style, FontValues::defaultFontHeight));
+	}
 }
 
 String Font::toString() const
 {
-	String s (getTypefaceName());
+	String s;
 
-	if (s == getDefaultSansSerifFontName())
-		s = String::empty;
-	else
-		s += "; ";
+	if (getTypefaceName() != getDefaultSansSerifFontName())
+		s << getTypefaceName() << "; ";
 
-	s += String (getHeight(), 1);
+	s << String (getHeight(), 1);
 
-	if (isBold())      s += " bold";
-	if (isItalic())    s += " italic";
+	if (getTypefaceStyle() != getDefaultStyle())
+		s << ' ' << getTypefaceStyle();
 
 	return s;
 }
@@ -62631,11 +62817,9 @@ Font Font::fromString (const String& fontDescription)
 	if (height <= 0)
 		height = 10.0f;
 
-	int flags = Font::plain;
-	if (sizeAndStyle.containsIgnoreCase ("bold"))       flags |= Font::bold;
-	if (sizeAndStyle.containsIgnoreCase ("italic"))     flags |= Font::italic;
+	const String style (sizeAndStyle.fromFirstOccurrenceOf (" ", false, false));
 
-	return Font (name, height, flags);
+	return Font (name, style, height);
 }
 
 /*** End of inlined file: juce_Font.cpp ***/
@@ -64007,36 +64191,6 @@ void TextLayout::recalculateWidth()
 /*** End of inlined file: juce_TextLayout.cpp ***/
 
 
-/*** Start of inlined file: juce_Typeface.cpp ***/
-Typeface::Typeface (const String& name_) noexcept
-	: name (name_)
-{
-}
-
-Typeface::~Typeface()
-{
-}
-
-Typeface::Ptr Typeface::getFallbackTypeface()
-{
-	const Font fallbackFont (Font::getFallbackFontName(), 10, 0);
-	return fallbackFont.getTypeface();
-}
-
-EdgeTable* Typeface::getEdgeTableForGlyph (int glyphNumber, const AffineTransform& transform)
-{
-	Path path;
-
-	if (getOutlineForGlyph (glyphNumber, path) && ! path.isEmpty())
-		return new EdgeTable (path.getBoundsTransformed (transform).getSmallestIntegerContainer().expanded (1, 0),
-							  path, transform);
-
-	return nullptr;
-}
-
-/*** End of inlined file: juce_Typeface.cpp ***/
-
-
 /*** Start of inlined file: juce_DropShadowEffect.cpp ***/
 #if JUCE_MSVC && JUCE_DEBUG
  #pragma optimize ("t", on)
@@ -64161,8 +64315,6 @@ void GlowEffect::applyEffect (Image& image, Graphics& g, float alpha)
 
 /*** End of inlined file: juce_GlowEffect.cpp ***/
 
-// END_AUTOINCLUDE
-
 #if JUCE_MAC || JUCE_IOS
 
 /*** Start of inlined file: juce_osx_ObjCHelpers.h ***/
@@ -64280,52 +64432,37 @@ extern CGContextRef juce_getImageContext (const Image&);
 namespace CoreTextTypeLayout
 {
 	static CTFontRef createCTFont (const Font& font, const float fontSize,
-								   const bool applyScaleFactor, bool& needsItalicTransform)
+								   const bool applyScaleFactor)
 	{
-		CFStringRef cfName = font.getTypefaceName().toCFString();
-		CTFontRef ctFontRef = CTFontCreateWithName (cfName, fontSize, nullptr);
-		CFRelease (cfName);
+		CFStringRef cfFontFamily = font.getTypefaceName().toCFString();
+		CFStringRef cfFontStyle = font.getTypefaceStyle().toCFString();
+		CFStringRef keys[] = { kCTFontFamilyNameAttribute, kCTFontStyleNameAttribute };
+		CFTypeRef values[] = { cfFontFamily, cfFontStyle };
 
-		if (ctFontRef != nullptr)
+		CFDictionaryRef fontDescAttributes = CFDictionaryCreate (nullptr, (const void**) &keys,
+																 (const void**) &values,
+																 numElementsInArray (keys),
+																 &kCFTypeDictionaryKeyCallBacks,
+																 &kCFTypeDictionaryValueCallBacks);
+		CFRelease (cfFontStyle);
+		CFRelease (cfFontFamily);
+
+		CTFontDescriptorRef ctFontDescRef = CTFontDescriptorCreateWithAttributes (fontDescAttributes);
+		CFRelease (fontDescAttributes);
+
+		CTFontRef ctFontRef = CTFontCreateWithFontDescriptor (ctFontDescRef, fontSize, nullptr);
+		CFRelease (ctFontDescRef);
+
+		if (applyScaleFactor)
 		{
-			if (font.isItalic())
-			{
-				CTFontRef newFont = CTFontCreateCopyWithSymbolicTraits (ctFontRef, 0.0f, nullptr,
-																		kCTFontItalicTrait, kCTFontItalicTrait);
+			CGFontRef cgFontRef = CTFontCopyGraphicsFont (ctFontRef, nullptr);
+			const int totalHeight = std::abs (CGFontGetAscent (cgFontRef)) + std::abs (CGFontGetDescent (cgFontRef));
+			const float factor = CGFontGetUnitsPerEm (cgFontRef) / (float) totalHeight;
+			CGFontRelease (cgFontRef);
 
-				if (newFont != nullptr)
-				{
-					CFRelease (ctFontRef);
-					ctFontRef = newFont;
-				}
-				else
-				{
-					needsItalicTransform = true; // couldn't find a proper italic version, so fake it with a transform..
-				}
-			}
-
-			if (font.isBold())
-			{
-				CTFontRef newFont = CTFontCreateCopyWithSymbolicTraits (ctFontRef, 0.0f, nullptr,
-																		kCTFontBoldTrait, kCTFontBoldTrait);
-				if (newFont != nullptr)
-				{
-					CFRelease (ctFontRef);
-					ctFontRef = newFont;
-				}
-			}
-
-			if (applyScaleFactor)
-			{
-				CGFontRef cgFontRef = CTFontCopyGraphicsFont (ctFontRef, nullptr);
-				const int totalHeight = std::abs (CGFontGetAscent (cgFontRef)) + std::abs (CGFontGetDescent (cgFontRef));
-				const float factor = CGFontGetUnitsPerEm (cgFontRef) / (float) totalHeight;
-				CGFontRelease (cgFontRef);
-
-				CTFontRef newFont = CTFontCreateCopyWithAttributes (ctFontRef, fontSize * factor, nullptr, nullptr);
-				CFRelease (ctFontRef);
-				ctFontRef = newFont;
-			}
+			CTFontRef newFont = CTFontCreateCopyWithAttributes (ctFontRef, fontSize * factor, nullptr, nullptr);
+			CFRelease (ctFontRef);
+			ctFontRef = newFont;
 		}
 
 		return ctFontRef;
@@ -64408,8 +64545,7 @@ namespace CoreTextTypeLayout
 			if (attr->getFont() != nullptr)
 			{
 				const Font& f = *attr->getFont();
-				bool needsItalicTransform = false;
-				CTFontRef ctFontRef = createCTFont (f, f.getHeight(), true, needsItalicTransform);
+				CTFontRef ctFontRef = createCTFont (f, f.getHeight(), true);
 
 				CFAttributedStringSetAttribute (attribString, CFRangeMake (range.getStart(), range.getLength()),
 												kCTFontAttributeName, ctFontRef);
@@ -64561,17 +64697,24 @@ namespace CoreTextTypeLayout
 				CTFontRef ctRunFont;
 				if (CFDictionaryGetValueIfPresent (runAttributes, kCTFontAttributeName, (const void **) &ctRunFont))
 				{
-					CFStringRef cfsFontName = CTFontCopyPostScriptName (ctRunFont);
-					CTFontRef ctFontRef = CTFontCreateWithName (cfsFontName, 1024, nullptr);
+					CTFontDescriptorRef ctFontDescRef = CTFontCopyFontDescriptor (ctRunFont);
+					CFDictionaryRef fontDescAttributes = CTFontDescriptorCopyAttributes (ctFontDescRef);
+					CTFontRef ctFontRef = CTFontCreateWithFontDescriptor (ctFontDescRef, 1024, nullptr);
+					CFRelease (ctFontDescRef);
+
 					CGFontRef cgFontRef = CTFontCopyGraphicsFont (ctFontRef, nullptr);
 					CFRelease (ctFontRef);
 					const int totalHeight = std::abs (CGFontGetAscent (cgFontRef)) + std::abs (CGFontGetDescent (cgFontRef));
 					const float fontHeightToCGSizeFactor = CGFontGetUnitsPerEm (cgFontRef) / (float) totalHeight;
 					CGFontRelease (cgFontRef);
 
-					glyphRun->font = Font (String::fromCFString (cfsFontName),
-										   CTFontGetSize (ctRunFont) / fontHeightToCGSizeFactor, 0); // XXX bold/italic flags?
-					CFRelease (cfsFontName);
+					CFStringRef cfsFontFamily = (CFStringRef) CFDictionaryGetValue (fontDescAttributes, kCTFontFamilyNameAttribute);
+					CFStringRef cfsFontStyle  = (CFStringRef) CFDictionaryGetValue (fontDescAttributes, kCTFontStyleNameAttribute);
+
+					glyphRun->font = Font (String::fromCFString (cfsFontFamily),
+										   String::fromCFString (cfsFontStyle),
+										   CTFontGetSize (ctRunFont) / fontHeightToCGSizeFactor);
+					CFRelease (fontDescAttributes);
 				}
 
 				CGColorRef cgRunColor;
@@ -64602,7 +64745,8 @@ class OSXTypeface  : public Typeface
 {
 public:
 	OSXTypeface (const Font& font)
-		: Typeface (font.getTypefaceName()),
+		: Typeface (font.getTypefaceName(),
+		  font.getTypefaceStyle()),
 		  fontRef (nullptr),
 		  fontHeightToCGSizeFactor (1.0f),
 		  renderingTransform (CGAffineTransformIdentity),
@@ -64611,8 +64755,7 @@ public:
 		  ascent (0.0f),
 		  unitsToHeightScaleFactor (0.0f)
 	{
-		bool needsItalicTransform = false;
-		ctFontRef = CoreTextTypeLayout::createCTFont (font, 1024.0f, false, needsItalicTransform);
+		ctFontRef = CoreTextTypeLayout::createCTFont (font, 1024.0f, false);
 
 		if (ctFontRef != nullptr)
 		{
@@ -64621,12 +64764,6 @@ public:
 			ascent /= totalSize;
 
 			pathTransform = AffineTransform::identity.scale (1.0f / totalSize, 1.0f / totalSize);
-
-			if (needsItalicTransform)
-			{
-				pathTransform = pathTransform.sheared (-0.15f, 0.0f);
-				renderingTransform.c = 0.15f;
-			}
 
 			fontRef = CTFontCopyGraphicsFont (ctFontRef, nullptr);
 
@@ -64791,6 +64928,87 @@ private:
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OSXTypeface);
 };
 
+StringArray Font::findAllTypefaceNames()
+{
+	StringArray names;
+
+   #if MAC_OS_X_VERSION_MIN_REQUIRED > MAC_OS_X_VERSION_10_5 && ! JUCE_IOS
+	// CTFontManager only exists on OS X 10.6 and later, it does not exist on iOS
+	CFArrayRef fontFamilyArray = CTFontManagerCopyAvailableFontFamilyNames();
+
+	for (CFIndex i = 0; i < CFArrayGetCount (fontFamilyArray); ++i)
+	{
+		const String family (String::fromCFString ((CFStringRef) CFArrayGetValueAtIndex (fontFamilyArray, i)));
+
+		if (! family.startsWithChar ('.')) // ignore fonts that start with a '.'
+			names.addIfNotAlreadyThere (family);
+	}
+
+	CFRelease (fontFamilyArray);
+   #else
+	CTFontCollectionRef fontCollectionRef = CTFontCollectionCreateFromAvailableFonts (nullptr);
+	CFArrayRef fontDescriptorArray = CTFontCollectionCreateMatchingFontDescriptors (fontCollectionRef);
+	CFRelease (fontCollectionRef);
+
+	for (CFIndex i = 0; i < CFArrayGetCount (fontDescriptorArray); ++i)
+	{
+		CTFontDescriptorRef ctFontDescriptorRef = (CTFontDescriptorRef) CFArrayGetValueAtIndex (fontDescriptorArray, i);
+		CFStringRef cfsFontFamily = (CFStringRef) CTFontDescriptorCopyAttribute (ctFontDescriptorRef, kCTFontFamilyNameAttribute);
+
+		names.addIfNotAlreadyThere (String::fromCFString (cfsFontFamily));
+
+		CFRelease (cfsFontFamily);
+	}
+
+	CFRelease (fontDescriptorArray);
+   #endif
+
+	names.sort (true);
+	return names;
+}
+
+StringArray Font::findAllTypefaceStyles (const String& family)
+{
+	if (FontStyleHelpers::isPlaceholderFamilyName (family))
+		return findAllTypefaceStyles (FontStyleHelpers::getConcreteFamilyNameFromPlaceholder (family));
+
+	StringArray results;
+
+	CFStringRef cfsFontFamily = family.toCFString();
+	CFStringRef keys[] = { kCTFontFamilyNameAttribute };
+	CFTypeRef values[] = { cfsFontFamily };
+
+	CFDictionaryRef fontDescAttributes = CFDictionaryCreate (nullptr, (const void**) &keys, (const void**) &values, numElementsInArray (keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFRelease (cfsFontFamily);
+
+	CTFontDescriptorRef ctFontDescRef = CTFontDescriptorCreateWithAttributes (fontDescAttributes);
+	CFRelease (fontDescAttributes);
+
+	CFArrayRef fontFamilyArray = CFArrayCreate(kCFAllocatorDefault, (const void**) &ctFontDescRef, 1, &kCFTypeArrayCallBacks);
+	CFRelease (ctFontDescRef);
+
+	CTFontCollectionRef fontCollectionRef = CTFontCollectionCreateWithFontDescriptors (fontFamilyArray, nullptr);
+	CFRelease (fontFamilyArray);
+
+	CFArrayRef fontDescriptorArray = CTFontCollectionCreateMatchingFontDescriptors (fontCollectionRef);
+	CFRelease (fontCollectionRef);
+
+	if (fontDescriptorArray != nullptr)
+	{
+		for (CFIndex i = 0; i < CFArrayGetCount (fontDescriptorArray); ++i)
+		{
+			CTFontDescriptorRef ctFontDescriptorRef = (CTFontDescriptorRef) CFArrayGetValueAtIndex (fontDescriptorArray, i);
+			CFStringRef cfsFontStyle = (CFStringRef) CTFontDescriptorCopyAttribute (ctFontDescriptorRef, kCTFontStyleNameAttribute);
+			results.add (String::fromCFString (cfsFontStyle));
+			CFRelease (cfsFontStyle);
+		}
+
+		CFRelease (fontDescriptorArray);
+	}
+
+	return results;
+}
+
 #else
 
 // The stuff that follows is a mash-up that supports pre-OSX 10.5 and pre-iOS 3.2 APIs.
@@ -64818,49 +65036,13 @@ class OSXTypeface  : public Typeface
 {
 public:
 	OSXTypeface (const Font& font)
-		: Typeface (font.getTypefaceName())
+		: Typeface (font.getTypefaceName(), font.getTypefaceStyle())
 	{
 		JUCE_AUTORELEASEPOOL
 		renderingTransform = CGAffineTransformIdentity;
 
-		bool needsItalicTransform = false;
-
 #if JUCE_IOS
-		NSString* fontName = juceStringToNS (font.getTypefaceName());
-
-		if (font.isItalic() || font.isBold())
-		{
-			NSArray* familyFonts = [UIFont fontNamesForFamilyName: juceStringToNS (font.getTypefaceName())];
-
-			for (NSString* i in familyFonts)
-			{
-				const String fn (nsStringToJuce (i));
-				const String afterDash (fn.fromFirstOccurrenceOf ("-", false, false));
-
-				const bool probablyBold = afterDash.containsIgnoreCase ("bold") || fn.endsWithIgnoreCase ("bold");
-				const bool probablyItalic = afterDash.containsIgnoreCase ("oblique")
-											 || afterDash.containsIgnoreCase ("italic")
-											 || fn.endsWithIgnoreCase ("oblique")
-											 || fn.endsWithIgnoreCase ("italic");
-
-				if (probablyBold == font.isBold()
-					 && probablyItalic == font.isItalic())
-				{
-					fontName = i;
-					needsItalicTransform = false;
-					break;
-				}
-				else if (probablyBold && (! probablyItalic) && probablyBold == font.isBold())
-				{
-					fontName = i;
-					needsItalicTransform = true; // not ideal, so carry on in case we find a better one
-				}
-			}
-
-			if (needsItalicTransform)
-				renderingTransform.c = 0.15f;
-		}
-
+		NSString* fontName = juceStringToNS (style);
 		fontRef = CGFontCreateWithFontName ((CFStringRef) fontName);
 
 		if (fontRef == 0)
@@ -64876,21 +65058,12 @@ public:
 		unitsToHeightScaleFactor = 1.0f / totalHeight;
 		fontHeightToCGSizeFactor = CGFontGetUnitsPerEm (fontRef) / totalHeight;
 #else
-		nsFont = [NSFont fontWithName: juceStringToNS (font.getTypefaceName()) size: 1024];
+		NSDictionary* nsDict = [NSDictionary dictionaryWithObjectsAndKeys:
+								   juceStringToNS (name), NSFontFamilyAttribute,
+								   juceStringToNS (style), NSFontFaceAttribute, nil];
 
-		if (font.isItalic())
-		{
-			NSFont* newFont = [[NSFontManager sharedFontManager] convertFont: nsFont
-																 toHaveTrait: NSItalicFontMask];
-
-			if (newFont == nsFont)
-				needsItalicTransform = true; // couldn't find a proper italic version, so fake it with a transform..
-
-			nsFont = newFont;
-		}
-
-		if (font.isBold())
-			nsFont = [[NSFontManager sharedFontManager] convertFont: nsFont toHaveTrait: NSBoldFontMask];
+		NSFontDescriptor* nsFontDesc = [NSFontDescriptor fontDescriptorWithFontAttributes: nsDict];
+		nsFont = [NSFont fontWithDescriptor: nsFontDesc size: 1024];
 
 		[nsFont retain];
 
@@ -64899,12 +65072,6 @@ public:
 		ascent /= totalSize;
 
 		pathTransform = AffineTransform::identity.scale (1.0f / totalSize, 1.0f / totalSize);
-
-		if (needsItalicTransform)
-		{
-			pathTransform = pathTransform.sheared (-0.15f, 0.0f);
-			renderingTransform.c = 0.15f;
-		}
 
 	  #if SUPPORT_ONLY_10_4_FONTS
 		ATSFontRef atsFont = ATSFontFindFromName ((CFStringRef) [nsFont fontName], kATSOptionFlagsDefault);
@@ -65147,7 +65314,7 @@ private:
 	   #endif
 	}
 
-#if ! SUPPORT_ONLY_10_4_FONTS
+   #if ! SUPPORT_ONLY_10_4_FONTS
 	// Reads a CGFontRef's character map table to convert unicode into glyph numbers
 	class CharToGlyphMapper
 	{
@@ -65246,22 +65413,14 @@ private:
 	};
 
 	ScopedPointer <CharToGlyphMapper> charToGlyphMapper;
-#endif
+   #endif
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OSXTypeface);
 };
 
-#endif
-
-Typeface::Ptr Typeface::createSystemTypefaceFor (const Font& font)
-{
-	return new OSXTypeface (font);
-}
-
 StringArray Font::findAllTypefaceNames()
 {
 	StringArray names;
-
 	JUCE_AUTORELEASEPOOL
 
    #if JUCE_IOS
@@ -65275,6 +65434,42 @@ StringArray Font::findAllTypefaceNames()
 
 	names.sort (true);
 	return names;
+}
+
+StringArray Font::findAllTypefaceStyles (const String& family)
+{
+	if (FontStyleHelpers::isPlaceholderFamilyName (family))
+		return findAllTypefaceStyles (FontStyleHelpers::getConcreteFamilyNameFromPlaceholder (family));
+
+	StringArray results;
+	JUCE_AUTORELEASEPOOL
+
+   #if JUCE_IOS
+	NSArray* styles = [UIFont fontNamesForFamilyName: juceStringToNS (family)];
+   #else
+	NSArray* styles = [[NSFontManager sharedFontManager] availableMembersOfFontFamily: juceStringToNS (family)];
+   #endif
+
+	for (unsigned int i = 0; i < [styles count]; ++i)
+	{
+	   #if JUCE_IOS
+		// Fonts are returned in the form of "Arial-BoldMT"
+		results.add (nsStringToJuce ((NSString*) [styles objectAtIndex: i]));
+	   #else
+		NSArray* style = [styles objectAtIndex: i];
+		results.add (nsStringToJuce ((NSString*) [style objectAtIndex: 1]));
+	   #endif
+
+	}
+
+	return results;
+}
+
+#endif
+
+Typeface::Ptr Typeface::createSystemTypefaceFor (const Font& font)
+{
+	return new OSXTypeface (font);
 }
 
 struct DefaultFontNames
@@ -65300,15 +65495,24 @@ Typeface::Ptr Font::getDefaultTypefaceForFont (const Font& font)
 {
 	static DefaultFontNames defaultNames;
 
-	String faceName (font.getTypefaceName());
+	Font newFont (font);
+	const String& faceName = font.getTypefaceName();
 
-	if (faceName == Font::getDefaultSansSerifFontName())       faceName = defaultNames.defaultSans;
-	else if (faceName == Font::getDefaultSerifFontName())      faceName = defaultNames.defaultSerif;
-	else if (faceName == Font::getDefaultMonospacedFontName()) faceName = defaultNames.defaultFixed;
+	if (faceName == getDefaultSansSerifFontName())       newFont.setTypefaceName (defaultNames.defaultSans);
+	else if (faceName == getDefaultSerifFontName())      newFont.setTypefaceName (defaultNames.defaultSerif);
+	else if (faceName == getDefaultMonospacedFontName()) newFont.setTypefaceName (defaultNames.defaultFixed);
 
-	Font f (font);
-	f.setTypefaceName (faceName);
-	return Typeface::createSystemTypefaceFor (f);
+	if (font.getTypefaceStyle() == getDefaultStyle())
+		newFont.setTypefaceStyle ("Regular");
+
+   #if JUCE_IOS && ! JUCE_CORETEXT_AVAILABLE
+	// Fonts style names on Cocoa Touch are unusual like "Arial-BoldMT"
+	// No font will be found for the style of "Regular" so we must modify the style
+	if (newFont.getTypefaceStyle() == "Regular")
+		newFont.setTypefaceStyle (faceName);
+   #endif
+
+	return Typeface::createSystemTypefaceFor (newFont);
 }
 
 bool TextLayout::createNativeLayout (const AttributedString& text)
@@ -67269,6 +67473,47 @@ private:
 
 /*** Start of inlined file: juce_win32_DirectWriteTypeface.cpp ***/
 #if JUCE_USE_DIRECTWRITE
+namespace
+{
+	static String getLocalisedName (IDWriteLocalizedStrings* names)
+	{
+		jassert (names != nullptr);
+
+		uint32 index = 0;
+		BOOL exists = false;
+		HRESULT hr = names->FindLocaleName (L"en-us", &index, &exists);
+		if (! exists)
+			index = 0;
+
+		uint32 length = 0;
+		hr = names->GetStringLength (index, &length);
+
+		HeapBlock<wchar_t> name (length + 1);
+		hr = names->GetString (index, name, length + 1);
+
+		return static_cast <const wchar_t*> (name);
+	}
+
+	static String getFontFamilyName (IDWriteFontFamily* family)
+	{
+		jassert (family != nullptr);
+		ComSmartPtr<IDWriteLocalizedStrings> familyNames;
+		HRESULT hr = family->GetFamilyNames (familyNames.resetAndGetPointerAddress());
+		jassert (SUCCEEDED (hr)); (void) hr;
+		return getLocalisedName (familyNames);
+	}
+
+	static String getFontFaceName (IDWriteFont* font)
+	{
+		jassert (font != nullptr);
+		ComSmartPtr<IDWriteLocalizedStrings> faceNames;
+		HRESULT hr = font->GetFaceNames (faceNames.resetAndGetPointerAddress());
+		jassert (SUCCEEDED (hr)); (void) hr;
+
+		return getLocalisedName (faceNames);
+	}
+}
+
 class Direct2DFactories
 {
 public:
@@ -67330,7 +67575,7 @@ class WindowsDirectWriteTypeface  : public Typeface
 {
 public:
 	WindowsDirectWriteTypeface (const Font& font, IDWriteFontCollection* fontCollection)
-		: Typeface (font.getTypefaceName()),
+		: Typeface (font.getTypefaceName(), font.getTypefaceStyle()),
 		  ascent (0.0f)
 	{
 		jassert (fontCollection != nullptr);
@@ -67346,12 +67591,22 @@ public:
 		ComSmartPtr<IDWriteFontFamily> dwFontFamily;
 		hr = fontCollection->GetFontFamily (fontIndex, dwFontFamily.resetAndGetPointerAddress());
 
-		// Get a specific font in the font family using certain weight and style flags
+		// Get a specific font in the font family using typeface style
 		ComSmartPtr<IDWriteFont> dwFont;
-		DWRITE_FONT_WEIGHT dwWeight = font.isBold() ? DWRITE_FONT_WEIGHT_BOLD  : DWRITE_FONT_WEIGHT_NORMAL;
-		DWRITE_FONT_STYLE dwStyle = font.isItalic() ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL;
+		uint32 fontFacesCount = 0;
+		fontFacesCount = dwFontFamily->GetFontCount();
 
-		hr = dwFontFamily->GetFirstMatchingFont (dwWeight, DWRITE_FONT_STRETCH_NORMAL, dwStyle, dwFont.resetAndGetPointerAddress());
+		for (uint32 i = 0; i < fontFacesCount; ++i)
+		{
+			hr = dwFontFamily->GetFont (i, dwFont.resetAndGetPointerAddress());
+
+			ComSmartPtr<IDWriteLocalizedStrings> faceNames;
+			hr = dwFont->GetFaceNames (faceNames.resetAndGetPointerAddress());
+
+			if (font.getTypefaceStyle() == getLocalisedName (faceNames))
+				break;
+		}
+
 		hr = dwFont->CreateFontFace (dwFontFace.resetAndGetPointerAddress());
 
 		DWRITE_FONT_METRICS dwFontMetrics;
@@ -67566,8 +67821,8 @@ namespace DirectWriteTypeLayout
 			glyphLine.ascent  = jmax (glyphLine.ascent,  scaledFontSize (dwFontMetrics.ascent,  dwFontMetrics, glyphRun));
 			glyphLine.descent = jmax (glyphLine.descent, scaledFontSize (dwFontMetrics.descent, dwFontMetrics, glyphRun));
 
-			int styleFlags = 0;
-			const String fontName (getFontName (glyphRun, styleFlags));
+			String fontFamily, fontStyle;
+			getFontFamilyAndStyle (glyphRun, fontFamily, fontStyle);
 
 			TextLayout::Run* const glyphRunLayout = new TextLayout::Run (Range<int> (runDescription->textPosition,
 																					 runDescription->textPosition + runDescription->stringLength),
@@ -67579,7 +67834,7 @@ namespace DirectWriteTypeLayout
 			const float totalHeight = std::abs ((float) dwFontMetrics.ascent) + std::abs ((float) dwFontMetrics.descent);
 			const float fontHeightToEmSizeFactor = (float) dwFontMetrics.designUnitsPerEm / totalHeight;
 
-			glyphRunLayout->font = Font (fontName, glyphRun->fontEmSize / fontHeightToEmSizeFactor, styleFlags);
+			glyphRunLayout->font = Font (fontFamily, fontStyle, glyphRun->fontEmSize / fontHeightToEmSizeFactor);
 			glyphRunLayout->colour = getColourOf (static_cast<ID2D1SolidColorBrush*> (clientDrawingEffect));
 
 			const Point<float> lineOrigin (layout->getLine (currentLine).lineOrigin);
@@ -67622,61 +67877,28 @@ namespace DirectWriteTypeLayout
 			return Colour::fromFloatRGBA (colour.r, colour.g, colour.b, colour.a);
 		}
 
-		String getFontName (DWRITE_GLYPH_RUN const* glyphRun, int& styleFlags) const
+		void getFontFamilyAndStyle (DWRITE_GLYPH_RUN const* glyphRun, String& family, String& style) const
 		{
 			ComSmartPtr<IDWriteFont> dwFont;
-
 			HRESULT hr = fontCollection->GetFontFromFontFace (glyphRun->fontFace, dwFont.resetAndGetPointerAddress());
 			jassert (dwFont != nullptr);
 
-			if (dwFont->GetWeight() == DWRITE_FONT_WEIGHT_BOLD) styleFlags |= Font::bold;
-			if (dwFont->GetStyle() == DWRITE_FONT_STYLE_ITALIC) styleFlags |= Font::italic;
+			{
+				ComSmartPtr<IDWriteFontFamily> dwFontFamily;
+				hr = dwFont->GetFontFamily (dwFontFamily.resetAndGetPointerAddress());
+				family = getFontFamilyName (dwFontFamily);
+			}
 
-			ComSmartPtr<IDWriteFontFamily> dwFontFamily;
-			hr = dwFont->GetFontFamily (dwFontFamily.resetAndGetPointerAddress());
-			jassert (dwFontFamily != nullptr);
-
-			// Get the Font Family Names
-			ComSmartPtr<IDWriteLocalizedStrings> dwFamilyNames;
-			hr = dwFontFamily->GetFamilyNames (dwFamilyNames.resetAndGetPointerAddress());
-			jassert (dwFamilyNames != nullptr);
-
-			UINT32 index = 0;
-			BOOL exists = false;
-			hr = dwFamilyNames->FindLocaleName (L"en-us", &index, &exists);
-			if (! exists)
-				index = 0;
-
-			UINT32 length = 0;
-			hr = dwFamilyNames->GetStringLength (index, &length);
-
-			HeapBlock <wchar_t> name (length + 1);
-			hr = dwFamilyNames->GetString (index, name, length + 1);
-
-			return String (name);
+			style = getFontFaceName (dwFont);
 		}
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CustomDirectWriteTextRenderer);
 	};
 
-	float getFontHeightToEmSizeFactor (const Font& font, IDWriteFontCollection& dwFontCollection)
+	float getFontHeightToEmSizeFactor (IDWriteFont* const dwFont)
 	{
-		BOOL fontFound = false;
-		uint32 fontIndex;
-		dwFontCollection.FindFamilyName (font.getTypefaceName().toWideCharPointer(), &fontIndex, &fontFound);
-
-		if (! fontFound)
-			fontIndex = 0;
-
-		ComSmartPtr<IDWriteFontFamily> dwFontFamily;
-		HRESULT hr = dwFontCollection.GetFontFamily (fontIndex, dwFontFamily.resetAndGetPointerAddress());
-
-		ComSmartPtr<IDWriteFont> dwFont;
-		hr = dwFontFamily->GetFirstMatchingFont (DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-												 dwFont.resetAndGetPointerAddress());
-
 		ComSmartPtr<IDWriteFontFace> dwFontFace;
-		hr = dwFont->CreateFontFace (dwFontFace.resetAndGetPointerAddress());
+		dwFont->CreateFontFace (dwFontFace.resetAndGetPointerAddress());
 
 		DWRITE_FONT_METRICS dwFontMetrics;
 		dwFontFace->GetMetrics (&dwFontMetrics);
@@ -67727,13 +67949,35 @@ namespace DirectWriteTypeLayout
 
 		if (font != nullptr)
 		{
-			textLayout->SetFontFamilyName (font->getTypefaceName().toWideCharPointer(), range);
+			BOOL fontFound = false;
+			uint32 fontIndex;
+			fontCollection->FindFamilyName (font->getTypefaceName().toWideCharPointer(), &fontIndex, &fontFound);
 
-			const float fontHeightToEmSizeFactor = getFontHeightToEmSizeFactor (*font, *fontCollection);
+			if (! fontFound)
+				fontIndex = 0;
+
+			ComSmartPtr<IDWriteFontFamily> fontFamily;
+			HRESULT hr = fontCollection->GetFontFamily (fontIndex, fontFamily.resetAndGetPointerAddress());
+
+			ComSmartPtr<IDWriteFont> dwFont;
+			uint32 fontFacesCount = 0;
+			fontFacesCount = fontFamily->GetFontCount();
+
+			for (uint32 i = 0; i < fontFacesCount; ++i)
+			{
+				hr = fontFamily->GetFont (i, dwFont.resetAndGetPointerAddress());
+
+				if (attr.getFont()->getTypefaceStyle() == getFontFaceName (dwFont))
+					break;
+			}
+
+			textLayout->SetFontFamilyName (attr.getFont()->getTypefaceName().toWideCharPointer(), range);
+			textLayout->SetFontWeight (dwFont->GetWeight(), range);
+			textLayout->SetFontStretch (dwFont->GetStretch(), range);
+			textLayout->SetFontStyle (dwFont->GetStyle(), range);
+
+			const float fontHeightToEmSizeFactor = getFontHeightToEmSizeFactor (dwFont);
 			textLayout->SetFontSize (font->getHeight() * fontHeightToEmSizeFactor, range);
-
-			if (font->isBold())     textLayout->SetFontWeight (DWRITE_FONT_WEIGHT_BOLD, range);
-			if (font->isItalic())   textLayout->SetFontStyle (DWRITE_FONT_STYLE_ITALIC, range);
 		}
 
 		if (attr.getColour() != nullptr)
@@ -67766,7 +68010,21 @@ namespace DirectWriteTypeLayout
 		HRESULT hr = direct2dFactory->CreateDCRenderTarget (&d2dRTProp, renderTarget.resetAndGetPointerAddress());
 
 		Font defaultFont;
-		const float defaultFontHeightToEmSizeFactor = getFontHeightToEmSizeFactor (defaultFont, *fontCollection);
+		BOOL fontFound = false;
+		uint32 fontIndex;
+		fontCollection->FindFamilyName (defaultFont.getTypefaceName().toWideCharPointer(), &fontIndex, &fontFound);
+
+		if (! fontFound)
+			fontIndex = 0;
+
+		ComSmartPtr<IDWriteFontFamily> dwFontFamily;
+		hr = fontCollection->GetFontFamily (fontIndex, dwFontFamily.resetAndGetPointerAddress());
+
+		ComSmartPtr<IDWriteFont> dwFont;
+		hr = dwFontFamily->GetFirstMatchingFont (DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+												 dwFont.resetAndGetPointerAddress());
+
+		const float defaultFontHeightToEmSizeFactor = getFontHeightToEmSizeFactor (dwFont);
 
 		jassert (directWriteFactory != nullptr);
 
@@ -67838,7 +68096,7 @@ bool TextLayout::createNativeLayout (const AttributedString& text)
 /*** Start of inlined file: juce_win32_Fonts.cpp ***/
 namespace FontEnumerators
 {
-	int CALLBACK fontEnum2 (ENUMLOGFONTEXW* lpelfe, NEWTEXTMETRICEXW*, int type, LPARAM lParam)
+	static int CALLBACK fontEnum2 (ENUMLOGFONTEXW* lpelfe, NEWTEXTMETRICEXW*, int type, LPARAM lParam)
 	{
 		if (lpelfe != nullptr && (type & RASTER_FONTTYPE) == 0)
 		{
@@ -67849,7 +68107,7 @@ namespace FontEnumerators
 		return 1;
 	}
 
-	int CALLBACK fontEnum1 (ENUMLOGFONTEXW* lpelfe, NEWTEXTMETRICEXW*, int type, LPARAM lParam)
+	static int CALLBACK fontEnum1 (ENUMLOGFONTEXW* lpelfe, NEWTEXTMETRICEXW*, int type, LPARAM lParam)
 	{
 		if (lpelfe != nullptr && (type & RASTER_FONTTYPE) == 0)
 		{
@@ -67878,25 +68136,96 @@ namespace FontEnumerators
 StringArray Font::findAllTypefaceNames()
 {
 	StringArray results;
-	HDC dc = CreateCompatibleDC (0);
 
+   #if JUCE_USE_DIRECTWRITE
+	const Direct2DFactories& factories = Direct2DFactories::getInstance();
+
+	if (factories.systemFonts != nullptr)
 	{
-		LOGFONTW lf = { 0 };
-		lf.lfWeight = FW_DONTCARE;
-		lf.lfOutPrecision = OUT_OUTLINE_PRECIS;
-		lf.lfQuality = DEFAULT_QUALITY;
-		lf.lfCharSet = DEFAULT_CHARSET;
-		lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-		lf.lfPitchAndFamily = FF_DONTCARE;
+		ComSmartPtr<IDWriteFontFamily> fontFamily;
+		uint32 fontFamilyCount = 0;
+		fontFamilyCount = factories.systemFonts->GetFontFamilyCount();
 
-		EnumFontFamiliesEx (dc, &lf,
-							(FONTENUMPROCW) &FontEnumerators::fontEnum1,
-							(LPARAM) &results, 0);
+		for (uint32 i = 0; i < fontFamilyCount; ++i)
+		{
+			HRESULT hr = factories.systemFonts->GetFontFamily (i, fontFamily.resetAndGetPointerAddress());
+
+			if (SUCCEEDED (hr))
+				results.addIfNotAlreadyThere (getFontFamilyName (fontFamily));
+		}
+	}
+	else
+   #endif
+	{
+		HDC dc = CreateCompatibleDC (0);
+
+		{
+			LOGFONTW lf = { 0 };
+			lf.lfWeight = FW_DONTCARE;
+			lf.lfOutPrecision = OUT_OUTLINE_PRECIS;
+			lf.lfQuality = DEFAULT_QUALITY;
+			lf.lfCharSet = DEFAULT_CHARSET;
+			lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+			lf.lfPitchAndFamily = FF_DONTCARE;
+
+			EnumFontFamiliesEx (dc, &lf,
+								(FONTENUMPROCW) &FontEnumerators::fontEnum1,
+								(LPARAM) &results, 0);
+		}
+
+		DeleteDC (dc);
 	}
 
-	DeleteDC (dc);
-
 	results.sort (true);
+	return results;
+}
+
+StringArray Font::findAllTypefaceStyles (const String& family)
+{
+	if (FontStyleHelpers::isPlaceholderFamilyName (family))
+		return findAllTypefaceStyles (FontStyleHelpers::getConcreteFamilyNameFromPlaceholder (family));
+
+	StringArray results;
+
+   #if JUCE_USE_DIRECTWRITE
+	const Direct2DFactories& factories = Direct2DFactories::getInstance();
+
+	if (factories.systemFonts != nullptr)
+	{
+		BOOL fontFound = false;
+		uint32 fontIndex = 0;
+		HRESULT hr = factories.systemFonts->FindFamilyName (family.toWideCharPointer(), &fontIndex, &fontFound);
+		if (! fontFound)
+			fontIndex = 0;
+
+		// Get the font family using the search results
+		// Fonts like: Times New Roman, Times New Roman Bold, Times New Roman Italic are all in the same font family
+		ComSmartPtr<IDWriteFontFamily> fontFamily;
+		hr = factories.systemFonts->GetFontFamily (fontIndex, fontFamily.resetAndGetPointerAddress());
+
+		// Get the font faces
+		ComSmartPtr<IDWriteFont> dwFont;
+		uint32 fontFacesCount = 0;
+		fontFacesCount = fontFamily->GetFontCount();
+
+		for (uint32 i = 0; i < fontFacesCount; ++i)
+		{
+			hr = fontFamily->GetFont (i, dwFont.resetAndGetPointerAddress());
+
+			// Ignore any algorithmically generated bold and oblique styles..
+			if (dwFont->GetSimulations() == DWRITE_FONT_SIMULATIONS_NONE)
+				results.addIfNotAlreadyThere (getFontFaceName (dwFont));
+		}
+	}
+	else
+   #endif
+	{
+		results.add ("Regular");
+		results.add ("Italic");
+		results.add ("Bold");
+		results.add ("Bold Italic");
+	}
+
 	return results;
 }
 
@@ -67929,29 +68258,30 @@ Typeface::Ptr Font::getDefaultTypefaceForFont (const Font& font)
 {
 	static DefaultFontNames defaultNames;
 
-	String faceName (font.getTypefaceName());
+	Font newFont (font);
+	const String& faceName = font.getTypefaceName();
 
-	if (faceName == Font::getDefaultSansSerifFontName())       faceName = defaultNames.defaultSans;
-	else if (faceName == Font::getDefaultSerifFontName())      faceName = defaultNames.defaultSerif;
-	else if (faceName == Font::getDefaultMonospacedFontName()) faceName = defaultNames.defaultFixed;
+	if (faceName == getDefaultSansSerifFontName())       newFont.setTypefaceName (defaultNames.defaultSans);
+	else if (faceName == getDefaultSerifFontName())      newFont.setTypefaceName (defaultNames.defaultSerif);
+	else if (faceName == getDefaultMonospacedFontName()) newFont.setTypefaceName (defaultNames.defaultFixed);
 
-	Font f (font);
-	f.setTypefaceName (faceName);
-	return Typeface::createSystemTypefaceFor (f);
+	if (font.getTypefaceStyle() == getDefaultStyle())
+		newFont.setTypefaceStyle ("Regular");
+
+	return Typeface::createSystemTypefaceFor (newFont);
 }
 
 class WindowsTypeface   : public Typeface
 {
 public:
 	WindowsTypeface (const Font& font)
-		: Typeface (font.getTypefaceName()),
+		: Typeface (font.getTypefaceName(),
+		  font.getTypefaceStyle()),
 		  fontH (0),
 		  previousFontH (0),
 		  dc (CreateCompatibleDC (0)),
 		  ascent (1.0f),
-		  defaultGlyph (-1),
-		  bold (font.isBold()),
-		  italic (font.isItalic())
+		  defaultGlyph (-1)
 	{
 		loadFont();
 
@@ -68094,7 +68424,6 @@ private:
 	TEXTMETRIC tm;
 	float ascent;
 	int defaultGlyph;
-	bool bold, italic;
 
 	struct KerningPair
 	{
@@ -68126,8 +68455,8 @@ private:
 		lf.lfOutPrecision = OUT_OUTLINE_PRECIS;
 		lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
 		lf.lfQuality = PROOF_QUALITY;
-		lf.lfItalic = (BYTE) (italic ? TRUE : FALSE);
-		lf.lfWeight = bold ? FW_BOLD : FW_NORMAL;
+		lf.lfItalic = (BYTE) (style == "Italic" ? TRUE : FALSE);
+		lf.lfWeight = style == "Bold" ? FW_BOLD : FW_NORMAL;
 		lf.lfHeight = -256;
 		name.copyToUTF16 (lf.lfFaceName, sizeof (lf.lfFaceName));
 
@@ -68386,38 +68715,30 @@ public:
 		KnownTypeface (const File& file_, const int faceIndex_, const FTFaceWrapper& face)
 		   : file (file_),
 			 family (face.face->family_name),
+			 style (face.face->style_name),
 			 faceIndex (faceIndex_),
-			 isBold   ((face.face->style_flags & FT_STYLE_FLAG_BOLD) != 0),
-			 isItalic ((face.face->style_flags & FT_STYLE_FLAG_ITALIC) != 0),
 			 isMonospaced ((face.face->face_flags & FT_FACE_FLAG_FIXED_WIDTH) != 0),
 			 isSansSerif (isFaceSansSerif (family))
 		{
 		}
 
 		const File file;
-		const String family;
+		const String family, style;
 		const int faceIndex;
-		const bool isBold, isItalic, isMonospaced, isSansSerif;
+		const bool isMonospaced, isSansSerif;
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KnownTypeface);
 	};
 
-	FTFaceWrapper::Ptr createFace (const String& fontName, const bool bold, const bool italic)
+	FTFaceWrapper::Ptr createFace (const String& fontName, const String& fontStyle)
 	{
-		const KnownTypeface* ftFace = matchTypeface (fontName, bold, italic);
+		const KnownTypeface* ftFace = matchTypeface (fontName, fontStyle);
 
 		if (ftFace == nullptr)
-		{
-			ftFace = matchTypeface (fontName, ! bold, italic);
+			ftFace = matchTypeface (fontName, "Regular");
 
-			if (ftFace == nullptr)
-			{
-				ftFace = matchTypeface (fontName, bold, ! italic);
-
-				if (ftFace == nullptr)
-					ftFace = matchTypeface (fontName, ! bold, ! italic);
-			}
-		}
+		if (ftFace == nullptr)
+			ftFace = matchTypeface (fontName, String::empty);
 
 		if (ftFace != nullptr)
 		{
@@ -68436,10 +68757,29 @@ public:
 		return nullptr;
 	}
 
-	void getFamilyNames (StringArray& familyNames) const
+	StringArray findAllFamilyNames() const
 	{
+		StringArray s;
+
 		for (int i = 0; i < faces.size(); i++)
-			familyNames.addIfNotAlreadyThere (faces.getUnchecked(i)->family);
+			s.addIfNotAlreadyThere (faces.getUnchecked(i)->family);
+
+		return s;
+	}
+
+	StringArray findAllTypefaceStyles (const String& family) const
+	{
+		StringArray s;
+
+		for (int i = 0; i < faces.size(); i++)
+		{
+			const KnownTypeface* const face = faces.getUnchecked(i);
+
+			if (face->family == family)
+				s.addIfNotAlreadyThere (face->style);
+		}
+
+		return s;
 	}
 
 	void getMonospacedNames (StringArray& monoSpaced) const
@@ -68469,15 +68809,14 @@ private:
 	FTLibWrapper::Ptr library;
 	OwnedArray<KnownTypeface> faces;
 
-	const KnownTypeface* matchTypeface (const String& familyName, const bool wantBold, const bool wantItalic) const noexcept
+	const KnownTypeface* matchTypeface (const String& familyName, const String& style) const noexcept
 	{
 		for (int i = 0; i < faces.size(); ++i)
 		{
 			const KnownTypeface* const face = faces.getUnchecked(i);
 
 			if (face->family == familyName
-				  && face->isBold == wantBold
-				  && face->isItalic == wantItalic)
+				  && (face->style.equalsIgnoreCase (style) || style.isEmpty()))
 				return face;
 		}
 
@@ -68505,19 +68844,18 @@ class FreeTypeTypeface   : public CustomTypeface
 public:
 	FreeTypeTypeface (const Font& font)
 		: faceWrapper (FTTypefaceList::getInstance()
-						   ->createFace (font.getTypefaceName(), font.isBold(), font.isItalic()))
+						   ->createFace (font.getTypefaceName(), font.getTypefaceStyle()))
 	{
 		if (faceWrapper != nullptr)
 		{
 			setCharacteristics (font.getTypefaceName(),
+								font.getTypefaceStyle(),
 								faceWrapper->face->ascender / (float) (faceWrapper->face->ascender - faceWrapper->face->descender),
-								font.isBold(), font.isItalic(),
 								L' ');
 		}
 		else
 		{
-			DBG ("Failed to create typeface: " << font.getTypefaceName() << " "
-				  << (font.isBold() ? 'B' : ' ') << (font.isItalic() ? 'I' : ' '));
+			DBG ("Failed to create typeface: " << font.toString());
 		}
 	}
 
@@ -68668,10 +69006,12 @@ Typeface::Ptr Typeface::createSystemTypefaceFor (const Font& font)
 
 StringArray Font::findAllTypefaceNames()
 {
-	StringArray s;
-	FTTypefaceList::getInstance()->getFamilyNames (s);
-	s.sort (true);
-	return s;
+	return FTTypefaceList::getInstance()->findAllFamilyNames();
+}
+
+StringArray Font::findAllTypefaceStyles (const String& family)
+{
+	return FTTypefaceList::getInstance()->findAllTypefaceStyles (family);
 }
 
 struct DefaultFontNames
@@ -68690,17 +69030,16 @@ private:
 	{
 		const StringArray choices (choicesArray);
 
-		int j;
-		for (j = 0; j < choices.size(); ++j)
+		for (int j = 0; j < choices.size(); ++j)
 			if (names.contains (choices[j], true))
 				return choices[j];
 
-		for (j = 0; j < choices.size(); ++j)
+		for (int j = 0; j < choices.size(); ++j)
 			for (int i = 0; i < names.size(); ++i)
 				if (names[i].startsWithIgnoreCase (choices[j]))
 					return names[i];
 
-		for (j = 0; j < choices.size(); ++j)
+		for (int j = 0; j < choices.size(); ++j)
 			for (int i = 0; i < names.size(); ++i)
 				if (names[i].containsIgnoreCase (choices[j]))
 					return names[i];
@@ -68713,7 +69052,8 @@ private:
 		StringArray allFonts;
 		FTTypefaceList::getInstance()->getSansSerifNames (allFonts);
 
-		const char* targets[] = { "Verdana", "Bitstream Vera Sans", "Luxi Sans", "Sans", 0 };
+		const char* targets[] = { "Verdana", "Bitstream Vera Sans", "Luxi Sans",
+								  "Liberation Sans", "DejaVu Sans", "Sans", 0 };
 		return pickBestFont (allFonts, targets);
 	}
 
@@ -68722,7 +69062,8 @@ private:
 		StringArray allFonts;
 		FTTypefaceList::getInstance()->getSerifNames (allFonts);
 
-		const char* targets[] = { "Bitstream Vera Serif", "Times", "Nimbus Roman", "Serif", 0 };
+		const char* targets[] = { "Bitstream Vera Serif", "Times", "Nimbus Roman",
+								  "Liberation Serif", "DejaVu Serif", "Serif", 0 };
 		return pickBestFont (allFonts, targets);
 	}
 
@@ -68731,7 +69072,8 @@ private:
 		StringArray allFonts;
 		FTTypefaceList::getInstance()->getMonospacedNames (allFonts);
 
-		const char* targets[] = { "Bitstream Vera Sans Mono", "Courier", "Sans Mono", "Mono", 0 };
+		const char* targets[] = { "Bitstream Vera Sans Mono", "Courier", "Sans Mono",
+								  "Liberation Mono", "DejaVu Mono", "Mono", 0 };
 		return pickBestFont (allFonts, targets);
 	}
 
@@ -69186,7 +69528,22 @@ StringArray Font::findAllTypefaceNames()
 	File ("/system/fonts").findChildFiles (fonts, File::findFiles, false, "*.ttf");
 
 	for (int i = 0; i < fonts.size(); ++i)
-		results.add (fonts.getReference(i).getFileNameWithoutExtension());
+		results.addIfNotAlreadyThere (fonts.getReference(i).getFileNameWithoutExtension()
+										.upToLastOccurrenceOf ("-", false, false));
+
+	return results;
+}
+
+StringArray Font::findAllTypefaceStyles (const String& family)
+{
+	StringArray results ("Regular");
+
+	Array<File> fonts;
+	File ("/system/fonts").findChildFiles (fonts, File::findFiles, false, family + "-*.ttf");
+
+	for (int i = 0; i < fonts.size(); ++i)
+		results.addIfNotAlreadyThere (fonts.getReference(i).getFileNameWithoutExtension()
+										.fromLastOccurrenceOf ("-", false, false));
 
 	return results;
 }
@@ -69223,24 +69580,27 @@ class AndroidTypeface   : public Typeface
 {
 public:
 	AndroidTypeface (const Font& font)
-		: Typeface (font.getTypefaceName()),
+		: Typeface (font.getTypefaceName(), font.getTypefaceStyle()),
 		  ascent (0),
 		  descent (0)
 	{
-		jint flags = 0;
-		if (font.isBold()) flags = 1;
-		if (font.isItalic()) flags += 2;
+		JNIEnv* const env = getEnv();
 
-		JNIEnv* env = getEnv();
+		const bool isBold   = style.contains ("Bold");
+		const bool isItalic = style.contains ("Italic");
 
-		File fontFile (File ("/system/fonts").getChildFile (name).withFileExtension (".ttf"));
+		File fontFile (getFontFile (name, style));
+
+		if (! fontFile.exists())
+			fontFile = findFontFile (name, isBold, isItalic);
 
 		if (fontFile.exists())
 			typeface = GlobalRef (env->CallStaticObjectMethod (TypefaceClass, TypefaceClass.createFromFile,
 															   javaString (fontFile.getFullPathName()).get()));
 		else
 			typeface = GlobalRef (env->CallStaticObjectMethod (TypefaceClass, TypefaceClass.create,
-															   javaString (getName()).get(), flags));
+															   javaString (getName()).get(),
+															   (isBold ? 1 : 0) + (isItalic ? 2 : 0)));
 
 		rect = GlobalRef (env->NewObject (RectClass, RectClass.constructor, 0, 0, 0, 0));
 
@@ -69356,6 +69716,41 @@ public:
 	float ascent, descent, unitsToHeightScaleFactor;
 
 private:
+	static File findFontFile (const String& family,
+							  const bool bold, const bool italic)
+	{
+		File file;
+
+		if (bold || italic)
+		{
+			String suffix;
+			if (bold)   suffix = "Bold";
+			if (italic) suffix << "Italic";
+
+			file = getFontFile (family, suffix);
+
+			if (file.exists())
+				return file;
+		}
+
+		file = getFontFile (family, "Regular");
+
+		if (! file.exists())
+			file = getFontFile (family, String::empty);
+
+		return file;
+	}
+
+	static File getFontFile (const String& family, const String& style)
+	{
+		String path ("/system/fonts/" + family);
+
+		if (style.isNotEmpty())
+			path << '-' << style;
+
+		return File (path + ".ttf");
+	}
+
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AndroidTypeface);
 };
 

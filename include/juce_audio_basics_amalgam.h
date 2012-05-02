@@ -2790,8 +2790,8 @@ public:
 								that will be inserted
 		@see updateMatchedPairs
 	*/
-	void addEvent (const MidiMessage& newMessage,
-				   double timeAdjustment = 0);
+	MidiEventHolder* addEvent (const MidiMessage& newMessage,
+							   double timeAdjustment = 0);
 
 	/** Deletes one of the events in the sequence.
 
@@ -3257,6 +3257,31 @@ private:
 */
 struct JUCE_API  AudioSourceChannelInfo
 {
+	/** Creates an uninitialised AudioSourceChannelInfo. */
+	AudioSourceChannelInfo() noexcept
+	{
+	}
+
+	/** Creates an AudioSourceChannelInfo. */
+	AudioSourceChannelInfo (AudioSampleBuffer* bufferToUse,
+							int startSampleOffset, int numSamplesToUse) noexcept
+		: buffer (bufferToUse),
+		  startSample (startSampleOffset),
+		  numSamples (numSamplesToUse)
+	{
+	}
+
+	/** Creates an AudioSourceChannelInfo that uses the whole of a buffer.
+		Note that the buffer provided must not be deleted while the
+		AudioSourceChannelInfo is still using it.
+	*/
+	explicit AudioSourceChannelInfo (AudioSampleBuffer& bufferToUse) noexcept
+		: buffer (&bufferToUse),
+		  startSample (0),
+		  numSamples (bufferToUse.getNumSamples())
+	{
+	}
+
 	/** The destination buffer to fill with audio data.
 
 		When the AudioSource::getNextAudioBlock() method is called, the active section

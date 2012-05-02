@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -1855,7 +1856,6 @@ void AudioSourcePlayer::audioDeviceIOCallback (const float** inputChannelData,
 
 	if (source != nullptr)
 	{
-		AudioSourceChannelInfo info;
 		int i, numActiveChans = 0, numInputs = 0, numOutputs = 0;
 
 		// messy stuff needed to compact the channels down into an array
@@ -1921,14 +1921,11 @@ void AudioSourcePlayer::audioDeviceIOCallback (const float** inputChannelData,
 
 		AudioSampleBuffer buffer (channels, numActiveChans, numSamples);
 
-		info.buffer = &buffer;
-		info.startSample = 0;
-		info.numSamples = numSamples;
-
+		AudioSourceChannelInfo info (&buffer, 0, numSamples);
 		source->getNextAudioBlock (info);
 
 		for (i = info.buffer->getNumChannels(); --i >= 0;)
-			info.buffer->applyGainRamp (i, info.startSample, info.numSamples, lastGain, gain);
+			buffer.applyGainRamp (i, info.startSample, info.numSamples, lastGain, gain);
 
 		lastGain = gain;
 	}
@@ -4694,11 +4691,7 @@ const int kilobytesPerSecond1x = 176;
 		if (numSamples > 0)
 		{
 			juce::AudioSampleBuffer tempBuffer (2, numSamples);
-
-			juce::AudioSourceChannelInfo info;
-			info.buffer = &tempBuffer;
-			info.startSample = 0;
-			info.numSamples = numSamples;
+			juce::AudioSourceChannelInfo info (tempBuffer);
 
 			source->getNextAudioBlock (info);
 
@@ -12420,10 +12413,7 @@ bool AudioCDBurner::addAudioTrack (AudioSource* audioSource, int numSamples)
 	while (ok)
 	{
 		{
-			AudioSourceChannelInfo info;
-			info.buffer = &sourceBuffer;
-			info.numSamples = samplesPerBlock;
-			info.startSample = 0;
+			AudioSourceChannelInfo info (&sourceBuffer, 0, samplesPerBlock);
 			sourceBuffer.clear();
 
 			source->getNextAudioBlock (info);

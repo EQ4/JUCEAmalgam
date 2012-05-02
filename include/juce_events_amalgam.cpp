@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -2783,35 +2784,6 @@ void MessageManager::doPlatformSpecificShutdown()
 /*** End of inlined file: juce_win32_Messaging.cpp ***/
 
 #elif JUCE_LINUX
-
-/*** Start of inlined file: juce_ScopedXLock.h ***/
-#ifndef __JUCE_SCOPEDXLOCK_JUCEHEADER__
-#define __JUCE_SCOPEDXLOCK_JUCEHEADER__
-
-#if JUCE_LINUX || DOXYGEN
-
-/** A handy class that uses XLockDisplay and XUnlockDisplay to lock the X server
-	using RAII (Only available in Linux!).
-*/
-class ScopedXLock
-{
-public:
-	/** Creating a ScopedXLock object locks the X display.
-		This uses XLockDisplay() to grab the display that Juce is using.
-	*/
-	ScopedXLock();
-
-	/** Deleting a ScopedXLock object unlocks the X display.
-		This calls XUnlockDisplay() to release the lock.
-	*/
-	~ScopedXLock();
-};
-
-#endif
-#endif   // __JUCE_SCOPEDXLOCK_JUCEHEADER__
-
-/*** End of inlined file: juce_ScopedXLock.h ***/
-
 
 
 /*** Start of inlined file: juce_linux_Messaging.cpp ***/

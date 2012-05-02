@@ -1,3 +1,33 @@
+7e9fbd30c3882bf2e5b718efbf08ce71c6f7ac08 2012-05-02 Some font style tweaks, and update of the juce demo fonts page to show a list of available styles.
+ef9acb91ca4ea9b5531fcfb7bdea31b358785688 2012-05-02 Added some value retrieval methods for DrawableText.
+791e15b790c2bc8cf57e044a7334866864c12154 2012-05-01 Fix to documentation.
+089a2e31baf8df3af4d5ea523030db27ec79a000 2012-05-01 Improved some docs.
+2e0640b8ba9edff217999f561680ddc00c9d77e6 2012-05-01 Added some speaker arrangement methods to AudioProcessor, with support for retrieving host speaker arrangements in a VST plugin.
+941907a3d18c4abc23f6902e7dbd7e1f82fa6134 2012-05-01 Initial commit of font style access, providing access to the styles available for each font family.
+9c21813960fb054f673668ea93a8a38566f7cbc1 2012-04-30 Fix for a mistake in the last check-in!
+5e378c5c9011a2a9011caea79ae110d7f7291af8 2012-04-30 Fix for linux keyboard function.
+3ef8be7a42ba8f041a7889318674d1927adfe4d9 2012-04-30 Updated use of deprecated linux keyboard function. Removed some unnecessary GL headers.
+dc76ef71e9be0c2a5a6a6ad1d1df083eee207781 2012-04-30 Made MidiMessageSequence::addEvent return the new event.
+711d58e06636365beed102b3ea47cafdb413b48c 2012-04-28 AlertWindow text box fix.
+3ba41c7d5169dd8bf36c104857a7932dfdd9c269 2012-04-28 Fix for KnownPluginList::scanAndAddFile.
+4f590f036dd753c3254d0569572dc6408c4bf547 2012-04-28 Added better constructors for AudioSourceChannelInfo.
+79381ced5d14fb8c213463d818f51b63b1ba6c1c 2012-04-27 Removed GLU from the list of default libraries.
+fa90b55cdd0511c675c9e2b251d033a441eed004 2012-04-26 Fix for a deadlock in some (rare) threading situations.
+ccb5144c95ec3f07d54bebd11c066f15937eb88d 2012-04-26 Fix for BufferingAudioSource when looping.
+321931c21ca35679345af9afe6e790f3600f393d 2012-04-26 Added a DrawableText::getText() method.
+ee4618d8635801dbfee3b185f9961fc98c42836c 2012-04-25 Added some explicit namespacing for exceptions, and fixed a mouseExit problem with modal components.
+112522930888a6768cf25f3af0f2a189efcd69ae 2012-04-25 Fixed a typo that prevented OSX 10.6 builds.
+438159d01aafa10a15771a1626b549bf413e8668 2012-04-24 Added a flag to disable inline asm.
+791cf42abc594adb5af5845ba47c45a2d5761d52 2012-04-24 New class: AudioThumbnailBase, which is an abstract base class for thumbnails.
+54bdb4897247897cb5ec025cb30159ef8a865b01 2012-04-24 Introjucer: minor internal changes.
+7d4bbd114a8d93d4eba27e7b8632d1de9792c523 2012-04-24 New class Desktop::Displays, which now handles all display size information and replaces some methods that were in Desktop. Also now supports display scaling values. See Desktop::getDisplays().
+10815d9e4d427e825cc451f31083d8442e73ef1c 2012-04-24 Introjucer: made the project wizard create some default exporters.
+2e1ead004e8cbac109319f42fec2726f2cd7239e 2012-04-24 Updated the default linux font names.
+6836d1eca68e862f016e2df3f2197657e817134c 2012-04-22 Introjucer: minor internal changes.
+bb2d7683e561433902b42fae0aa82cd824c65a42 2012-04-22 Linux VST header fix.
+0826b28983b4fdeb4d30d69635ca165081a809a6 2012-04-18 RTAS compatibility fix. Wav file fix for coping with corrupt files.
+83fa27c4f2db49d04021fc25328fb3fa4e93c06b 2012-04-18 Added channel mask metadata to WavAudioFormat.
+a16aee5fa5bc0f6593f19459064b639ec3cebcd0 2012-04-18 Made the plugin host demo close its plugin windows before attempting to quit.
 eb028b7c33b453934061e8aa8ffede8f28f321a0 2012-04-17 Introjucer: added support for a user-code section to the AppConfig.h file.
 d4e99f6628141babd973a5db7bb3b04edb6655a1 2012-04-17 Tweak to the demo project.
 cf5163a68dfb37c7e1b10c45bfd42de70f9f704a 2012-04-16 Updated some win32 video code.

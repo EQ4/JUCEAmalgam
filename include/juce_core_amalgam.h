@@ -355,7 +355,11 @@ namespace DummyNamespaceStatementToCatchSyntaxErrors {}
   #endif
   #define juce_breakDebugger        { __debugbreak(); }
 #elif JUCE_GCC || JUCE_MAC
-  #define juce_breakDebugger        { asm ("int $3"); }
+  #if JUCE_NO_INLINE_ASM
+   #define juce_breakDebugger       { }
+  #else
+   #define juce_breakDebugger       { asm ("int $3"); }
+  #endif
 #else
   #define juce_breakDebugger        { __asm int 3 }
 #endif
@@ -486,11 +490,11 @@ namespace juce
 	#define JUCE_CATCH_EXCEPTION \
 	  catch (const std::exception& e)  \
 	  { \
-		  JUCEApplication::sendUnhandledException (&e, __FILE__, __LINE__); \
+		  juce::JUCEApplication::sendUnhandledException (&e, __FILE__, __LINE__); \
 	  } \
 	  catch (...) \
 	  { \
-		  JUCEApplication::sendUnhandledException (nullptr, __FILE__, __LINE__); \
+		  juce::JUCEApplication::sendUnhandledException (nullptr, __FILE__, __LINE__); \
 	  }
   #endif
 
@@ -1314,12 +1318,12 @@ inline uint32 ByteOrder::swap (uint32 n)
 {
    #if JUCE_MAC || JUCE_IOS
 	return OSSwapInt32 (n);
-   #elif JUCE_GCC && JUCE_INTEL
+   #elif JUCE_GCC && JUCE_INTEL && ! JUCE_NO_INLINE_ASM
 	asm("bswap %%eax" : "=a"(n) : "a"(n));
 	return n;
    #elif JUCE_USE_INTRINSICS
 	return _byteswap_ulong (n);
-   #elif JUCE_MSVC
+   #elif JUCE_MSVC && ! JUCE_NO_INLINE_ASM
 	__asm {
 		mov eax, n
 		bswap eax
@@ -5654,7 +5658,7 @@ public:
 	*/
 	void prepareToWrite (int numToWrite, int& startIndex1, int& blockSize1, int& startIndex2, int& blockSize2) const noexcept;
 
-	/** Called after reading from the FIFO, to indicate that this many items have been added.
+	/** Called after writing from the FIFO, to indicate that this many items have been added.
 		@see prepareToWrite
 	*/
 	void finishedWrite (int numWritten) noexcept;

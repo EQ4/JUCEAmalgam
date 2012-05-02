@@ -3323,8 +3323,8 @@ double MidiMessageSequence::getEventTime (const int index) const
 	return e != nullptr ? e->message.getTimeStamp() : 0.0;
 }
 
-void MidiMessageSequence::addEvent (const MidiMessage& newMessage,
-									double timeAdjustment)
+MidiMessageSequence::MidiEventHolder* MidiMessageSequence::addEvent (const MidiMessage& newMessage,
+																	 double timeAdjustment)
 {
 	MidiEventHolder* const newOne = new MidiEventHolder (newMessage);
 
@@ -3337,6 +3337,7 @@ void MidiMessageSequence::addEvent (const MidiMessage& newMessage,
 			break;
 
 	list.insert (i + 1, newOne);
+	return newOne;
 }
 
 void MidiMessageSequence::deleteEvent (const int index,
@@ -3652,9 +3653,6 @@ void BufferingAudioSource::getNextAudioBlock (const AudioSourceChannelInfo& info
 		}
 
 		nextPlayPos += info.numSamples;
-
-		if (source->isLooping() && nextPlayPos > 0)
-			nextPlayPos %= source->getTotalLength();
 	}
 }
 
@@ -3761,11 +3759,7 @@ void BufferingAudioSource::readBufferSection (const int64 start, const int lengt
 	if (source->getNextReadPosition() != start)
 		source->setNextReadPosition (start);
 
-	AudioSourceChannelInfo info;
-	info.buffer = &buffer;
-	info.startSample = bufferOffset;
-	info.numSamples = length;
-
+	AudioSourceChannelInfo info (&buffer, bufferOffset, length);
 	source->getNextAudioBlock (info);
 }
 
@@ -4111,10 +4105,7 @@ void MixerAudioSource::getNextAudioBlock (const AudioSourceChannelInfo& info)
 			tempBuffer.setSize (jmax (1, info.buffer->getNumChannels()),
 								info.buffer->getNumSamples());
 
-			AudioSourceChannelInfo info2;
-			info2.buffer = &tempBuffer;
-			info2.numSamples = info.numSamples;
-			info2.startSample = 0;
+			AudioSourceChannelInfo info2 (&tempBuffer, 0, info.numSamples);
 
 			for (int i = 1; i < inputs.size(); ++i)
 			{
@@ -4222,11 +4213,7 @@ void ResamplingAudioSource::getNextAudioBlock (const AudioSourceChannelInfo& inf
 		int numToDo = jmin (sampsNeeded - sampsInBuffer,
 							bufferSize - endOfBufferPos);
 
-		AudioSourceChannelInfo readInfo;
-		readInfo.buffer = &buffer;
-		readInfo.numSamples = numToDo;
-		readInfo.startSample = endOfBufferPos;
-
+		AudioSourceChannelInfo readInfo (&buffer, endOfBufferPos, numToDo);
 		input->getNextAudioBlock (readInfo);
 
 		if (localRatio > 1.0001)

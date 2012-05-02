@@ -359,6 +359,7 @@
  #include <sys/file.h>
  #include <sys/prctl.h>
  #include <signal.h>
+ #include <stddef.h>
 
 #elif JUCE_ANDROID
  #include <jni.h>
@@ -406,6 +407,7 @@
 
 #if JUCE_PLUGINHOST_VST && JUCE_LINUX
  #include <X11/Xlib.h>
+ #include <X11/Xutil.h>
 #endif
 
 namespace juce
@@ -578,6 +580,12 @@ void AudioProcessor::setPlayConfigDetails (const int numIns,
 	numOutputChannels = numOuts;
 	sampleRate = sampleRate_;
 	blockSize = blockSize_;
+}
+
+void AudioProcessor::setSpeakerArrangement (const String& inputs, const String& outputs)
+{
+	inputSpeakerArrangement  = inputs;
+	outputSpeakerArrangement = outputs;
 }
 
 void AudioProcessor::setNonRealtime (const bool nonRealtime_) noexcept
@@ -2837,6 +2845,8 @@ protected:
 #if JUCE_MSVC
  #pragma warning (push)
  #pragma warning (disable: 4996)
+#else
+ #define __cdecl
 #endif
 
 /*  Obviously you're going to need the Steinberg vstsdk2.4 folder in
@@ -2851,176 +2861,6 @@ protected:
  #pragma warning (pop)
  #pragma warning (disable: 4355) // ("this" used in initialiser list warning)
 #endif
-
-#if JUCE_LINUX
- #define Font       juce::Font
- #define KeyPress   juce::KeyPress
- #define Drawable   juce::Drawable
- #define Time       juce::Time
-#endif
-
-
-/*** Start of inlined file: juce_VSTMidiEventList.h ***/
-#ifdef __aeffect__
-
-#ifndef __JUCE_VSTMIDIEVENTLIST_JUCEHEADER__
-#define __JUCE_VSTMIDIEVENTLIST_JUCEHEADER__
-
-/** Holds a set of VSTMidiEvent objects and makes it easy to add
-	events to the list.
-
-	This is used by both the VST hosting code and the plugin wrapper.
-*/
-class VSTMidiEventList
-{
-public:
-
-	VSTMidiEventList()
-		: numEventsUsed (0), numEventsAllocated (0)
-	{
-	}
-
-	~VSTMidiEventList()
-	{
-		freeEvents();
-	}
-
-	void clear()
-	{
-		numEventsUsed = 0;
-
-		if (events != nullptr)
-			events->numEvents = 0;
-	}
-
-	void addEvent (const void* const midiData, const int numBytes, const int frameOffset)
-	{
-		ensureSize (numEventsUsed + 1);
-
-		VstMidiEvent* const e = (VstMidiEvent*) (events->events [numEventsUsed]);
-		events->numEvents = ++numEventsUsed;
-
-		if (numBytes <= 4)
-		{
-			if (e->type == kVstSysExType)
-			{
-				delete[] (((VstMidiSysexEvent*) e)->sysexDump);
-				e->type = kVstMidiType;
-				e->byteSize = sizeof (VstMidiEvent);
-				e->noteLength = 0;
-				e->noteOffset = 0;
-				e->detune = 0;
-				e->noteOffVelocity = 0;
-			}
-
-			e->deltaFrames = frameOffset;
-			memcpy (e->midiData, midiData, numBytes);
-		}
-		else
-		{
-			VstMidiSysexEvent* const se = (VstMidiSysexEvent*) e;
-
-			if (se->type == kVstSysExType)
-				delete[] se->sysexDump;
-
-			se->sysexDump = new char [numBytes];
-			memcpy (se->sysexDump, midiData, numBytes);
-
-			se->type = kVstSysExType;
-			se->byteSize = sizeof (VstMidiSysexEvent);
-			se->deltaFrames = frameOffset;
-			se->flags = 0;
-			se->dumpBytes = numBytes;
-			se->resvd1 = 0;
-			se->resvd2 = 0;
-		}
-	}
-
-	// Handy method to pull the events out of an event buffer supplied by the host
-	// or plugin.
-	static void addEventsToMidiBuffer (const VstEvents* events, MidiBuffer& dest)
-	{
-		for (int i = 0; i < events->numEvents; ++i)
-		{
-			const VstEvent* const e = events->events[i];
-
-			if (e != nullptr)
-			{
-				if (e->type == kVstMidiType)
-				{
-					dest.addEvent ((const juce::uint8*) ((const VstMidiEvent*) e)->midiData,
-								   4, e->deltaFrames);
-				}
-				else if (e->type == kVstSysExType)
-				{
-					dest.addEvent ((const juce::uint8*) ((const VstMidiSysexEvent*) e)->sysexDump,
-								   (int) ((const VstMidiSysexEvent*) e)->dumpBytes,
-								   e->deltaFrames);
-				}
-			}
-		}
-	}
-
-	void ensureSize (int numEventsNeeded)
-	{
-		if (numEventsNeeded > numEventsAllocated)
-		{
-			numEventsNeeded = (numEventsNeeded + 32) & ~31;
-
-			const int size = 20 + sizeof (VstEvent*) * numEventsNeeded;
-
-			if (events == nullptr)
-				events.calloc (size, 1);
-			else
-				events.realloc (size, 1);
-
-			for (int i = numEventsAllocated; i < numEventsNeeded; ++i)
-				events->events[i] = allocateVSTEvent();
-
-			numEventsAllocated = numEventsNeeded;
-		}
-	}
-
-	void freeEvents()
-	{
-		if (events != nullptr)
-		{
-			for (int i = numEventsAllocated; --i >= 0;)
-				freeVSTEvent (events->events[i]);
-
-			events.free();
-			numEventsUsed = 0;
-			numEventsAllocated = 0;
-		}
-	}
-
-	HeapBlock <VstEvents> events;
-
-private:
-	int numEventsUsed, numEventsAllocated;
-
-	static VstEvent* allocateVSTEvent()
-	{
-		VstEvent* const e = (VstEvent*) std::calloc (1, sizeof (VstMidiEvent) > sizeof (VstMidiSysexEvent) ? sizeof (VstMidiEvent)
-																										   : sizeof (VstMidiSysexEvent));
-		e->type = kVstMidiType;
-		e->byteSize = sizeof (VstMidiEvent);
-		return e;
-	}
-
-	static void freeVSTEvent (VstEvent* e)
-	{
-		if (e->type == kVstSysExType)
-			delete[] (((VstMidiSysexEvent*) e)->sysexDump);
-
-		std::free (e);
-	}
-};
-
-#endif   // __JUCE_VSTMIDIEVENTLIST_JUCEHEADER__
-#endif   // __JUCE_VSTMIDIEVENTLIST_JUCEHEADER__
-
-/*** End of inlined file: juce_VSTMidiEventList.h ***/
 
 #if ! JUCE_WINDOWS
  static void _fpreset() {}
@@ -4133,7 +3973,7 @@ public:
 		return pluginWantsKeys;
 	}
 
-	bool keyPressed (const KeyPress&)
+	bool keyPressed (const juce::KeyPress&)
 	{
 		return pluginWantsKeys;
 	}
@@ -7382,9 +7222,10 @@ bool KnownPluginList::scanAndAddFile (const String& fileOrIdentifier,
 		jassert (desc != nullptr);
 
 		if (addType (*desc))
+		{
 			addedOne = true;
-
-		typesFound.add (new PluginDescription (*desc));
+			typesFound.add (new PluginDescription (*desc));
+		}
 	}
 
 	return addedOne;
